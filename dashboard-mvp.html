@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard on Myself</title>
+<link rel="stylesheet" href="style.css">
+<script src="KPI_API.js"></script>
+</head>
+<body>
+
+<div class="app">
+  <div class="topbar">
+    <div class="wordmark"><span class="dot"></span> dashboard on myself</div>
+    <div class="topbar-right">
+      <span id="today"></span>
+      <div class="avatar"></div>
+    </div>
+  </div>
+
+  <div class="greeting" id="greeting">Good afternoon</div>
+  <div class="greeting-sub">Here's where things stand today.</div>
+
+  <div class="section-label">Your KPIs</div>
+  <div id="statusBanner" class="status-banner" style="display:none;"></div>
+  <div class="kpi-grid" id="kpiGrid"></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modalTitle">Add KPI</h2>
+    <form id="kpiForm">
+      <div class="field">
+        <label for="fName">Name</label>
+        <input id="fName" type="text" maxlength="24" placeholder="e.g. Weekly runs" required>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="fValue">Current value</label>
+          <input id="fValue" type="number" step="any" placeholder="0" required>
+        </div>
+        <div class="field">
+          <label for="fTarget">Target</label>
+          <input id="fTarget" type="number" step="any" placeholder="0" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="fUnit">Unit (optional)</label>
+        <input id="fUnit" type="text" maxlength="10" placeholder="e.g. km, kg, %">
+      </div>
+      <div class="hint">Progress ring fills based on current value vs. target.</div>
+      <div class="modal-footer-row">
+        <button type="button" class="btn-delete" id="deleteBtn" style="display:none;">Remove KPI</button>
+        <span></span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>
