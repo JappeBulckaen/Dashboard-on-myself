@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -10,7 +10,7 @@ from app.db import Base
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default='gen_random_uuid()')
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     email = Column(String(255), unique=True, nullable=False)
     full_name = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
@@ -21,7 +21,7 @@ class User(Base):
 class Connection(Base):
     __tablename__ = "connections"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default='gen_random_uuid()')
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     source_app = Column(String(100), nullable=False)
     provider = Column(String(100), nullable=False)
@@ -51,7 +51,7 @@ class MetricCatalog(Base):
 class Fact(Base):
     __tablename__ = "facts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default='gen_random_uuid()')
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     source_app = Column(String(100), nullable=False)
     metric_type = Column(String(150), ForeignKey("metric_catalog.metric_type"), nullable=False)
@@ -66,7 +66,7 @@ class Fact(Base):
 class Goal(Base):
     __tablename__ = "goals"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default='gen_random_uuid()')
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     metric_type = Column(String(150), ForeignKey("metric_catalog.metric_type"), nullable=False)
     target_value = Column(Numeric(precision=18, scale=6), nullable=False)
@@ -81,7 +81,7 @@ class Goal(Base):
 class DashboardLayout(Base):
     __tablename__ = "dashboard_layout"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default='gen_random_uuid()')
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     widgets = Column(JSON, nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -90,7 +90,7 @@ class DashboardLayout(Base):
 class SyncRun(Base):
     __tablename__ = "sync_runs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default='gen_random_uuid()')
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     source_app = Column(String(100), nullable=False)
     status = Column(String(30), nullable=False)
