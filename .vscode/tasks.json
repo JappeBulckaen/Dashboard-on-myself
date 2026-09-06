@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Up BackEnd",
+      "type": "process",
+      "command": "C:\\Users\\jappe\\OneDrive\\Documenten\\projects\\Dashboard on myself\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload"
+      ],
+      "options": {
+        "cwd": "C:\\Users\\jappe\\OneDrive\\Documenten\\projects\\Dashboard on myself\\backend"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Stop BackEnd",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\Users\\jappe\\OneDrive\\Documenten\\projects\\Dashboard on myself\\scripts\\Stop-Backend.ps1"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}
