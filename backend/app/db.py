@@ -5,6 +5,7 @@ from app.config import get_settings
 
 settings = get_settings()
 raw_database_url = settings.database_url
+# Select psycopg 3 explicitly when the configured PostgreSQL URL omits a driver.
 if raw_database_url.startswith("postgresql://") and "+" not in raw_database_url.split("://", 1)[1][:10]:
     raw_database_url = raw_database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
@@ -14,6 +15,7 @@ Base = declarative_base()
 
 
 def get_db():
+    """Yield a database session and close it after the caller finishes."""
     db = SessionLocal()
     try:
         yield db

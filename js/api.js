@@ -1,18 +1,12 @@
-// ---------- Constants ----------
+// The dashboard renders a fixed number of KPI slots.
 const MAX_KPIS = 4;
 const ACCENTS = ['var(--blue-1)', 'var(--blue-2)', 'var(--blue-3)', 'var(--blue-4)'];
 
-// ---------- API layer ----------
-// Swap API_BASE for your FastAPI deployment (Render/Railway) when live.
-// Expected contract, matching the facts-table model:
-//   GET    /api/kpis            -> [{ id, metric_type, name, value, target, unit }]
-//   POST   /api/kpis            -> body: { metric_type, name, target, unit } -> created row
-//   PUT    /api/kpis/:id        -> body: { name, target, unit }              -> updated row
-//   DELETE /api/kpis/:id        -> 204
-// `value` on GET is server-computed: latest/aggregated fact for that metric_type
-// from the normalized facts table (user_id, source_app, metric_type, value, unit, timestamp).
-// The dashboard never writes `value` directly — that only comes from connector ingestion.
-const API_BASE = ''; // e.g. 'https://your-api.onrender.com' — leave blank to force mock mode
+// Set this to the FastAPI origin to use the server; an empty value selects the mock API.
+// The server returns KPI fields { id, metric_type, name, value, target, unit }.
+// POST accepts name/target plus optional unit/value/metric_type; PUT accepts name/target/unit.
+// DELETE currently returns { status: "deleted" }.
+const API_BASE = '';
 
 const api = {
   async list(){
@@ -50,8 +44,8 @@ const api = {
   }
 };
 
-// Mock backend so the UI is fully functional before FastAPI exists.
-// Simulated network delay keeps loading states honest during dev.
+// Keep temporary dashboard data in memory until API_BASE is configured.
+// The simulated delay makes loading states visible during development.
 const mockApi = (() => {
   let store = [
     { id: cryptoId(), metric_type: 'strava.distance_weekly', name: 'Weekly Runs', value: 3, target: 5, unit: 'km' },
@@ -81,5 +75,6 @@ const mockApi = (() => {
 })();
 
 function cryptoId(){
+  // Mock records only need short IDs; persisted backend records use UUIDs.
   return Math.random().toString(36).slice(2, 10);
 }

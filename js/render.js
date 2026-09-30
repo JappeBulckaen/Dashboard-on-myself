@@ -1,9 +1,11 @@
 function pct(k){
+  // Clamp progress so the ring stays between empty and fully complete.
   if (!k.target) return 0;
   return Math.max(0, Math.min(1, k.value / k.target));
 }
 
 function ringMarkup(progress, accent){
+  // Convert the desired progress into the SVG circle's dash offset.
   const r = 26, c = 2 * Math.PI * r;
   const offset = c * (1 - progress);
   return `
@@ -20,17 +22,20 @@ function ringMarkup(progress, accent){
 }
 
 function formatNum(n){
+  // Keep whole values compact and show one decimal place for fractional values.
   const num = Number(n);
   return Number.isInteger(num) ? num : num.toFixed(1);
 }
 
 function escapeHtml(str){
+  // KPI names and units are inserted into HTML templates, so encode user text first.
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
 }
 
 function renderSkeleton(){
+  // Reserve all KPI slots while the API or mock store is loading.
   const grid = document.getElementById('kpiGrid');
   grid.innerHTML = '';
   for (let i = 0; i < MAX_KPIS; i++){
@@ -50,6 +55,7 @@ function renderSkeleton(){
 }
 
 function setStatus(message, isError = false){
+  // An empty message hides the banner; otherwise show an informational or error state.
   const el = document.getElementById('statusBanner');
   if (!message){ el.style.display = 'none'; return; }
   el.style.display = 'flex';
@@ -58,6 +64,7 @@ function setStatus(message, isError = false){
 }
 
 async function loadKpis(){
+  // Refresh the view from the selected API implementation and surface failures in-page.
   renderSkeleton();
   setStatus(API_BASE ? '' : 'Using mock data — set API_BASE to connect your FastAPI backend.');
   try {
@@ -72,6 +79,7 @@ async function loadKpis(){
 }
 
 function render(){
+  // Render existing KPIs first, then fill unused slots with add buttons.
   const grid = document.getElementById('kpiGrid');
   grid.innerHTML = '';
 

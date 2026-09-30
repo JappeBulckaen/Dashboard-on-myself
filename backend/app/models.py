@@ -8,6 +8,8 @@ from app.db import Base
 
 
 class User(Base):
+    """A dashboard account; the current API creates a shared demo account on demand."""
+
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -19,6 +21,8 @@ class User(Base):
 
 
 class Connection(Base):
+    """A user's external data-source connection and its credential metadata."""
+
     __tablename__ = "connections"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -37,6 +41,8 @@ class Connection(Base):
 
 
 class MetricCatalog(Base):
+    """Describes a metric's display name, category, unit, and aggregation behavior."""
+
     __tablename__ = "metric_catalog"
 
     metric_type = Column(String(150), primary_key=True)
@@ -49,6 +55,8 @@ class MetricCatalog(Base):
 
 
 class Fact(Base):
+    """A timestamped observation of a metric from a particular source."""
+
     __tablename__ = "facts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -64,6 +72,8 @@ class Fact(Base):
 
 
 class Goal(Base):
+    """A user's target for one metric over a selected period."""
+
     __tablename__ = "goals"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -79,6 +89,8 @@ class Goal(Base):
 
 
 class DashboardLayout(Base):
+    """Saved widget configuration for a user's dashboard."""
+
     __tablename__ = "dashboard_layout"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -88,6 +100,8 @@ class DashboardLayout(Base):
 
 
 class SyncRun(Base):
+    """Status and results for one attempt to import data from a source."""
+
     __tablename__ = "sync_runs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))

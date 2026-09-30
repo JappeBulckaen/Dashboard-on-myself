@@ -3,6 +3,7 @@ const form = document.getElementById('kpiForm');
 const modalTitle = document.getElementById('modalTitle');
 const deleteBtn = document.getElementById('deleteBtn');
 
+// Open a blank form for a new KPI or preload the selected KPI for editing.
 function openModal(id){
   editingId = id;
   const k = id ? kpis.find(x => x.id === id) : null;
@@ -16,6 +17,7 @@ function openModal(id){
   document.getElementById('fName').focus();
 }
 
+// Clear edit state and form values whenever the dialog closes.
 function closeModal(){
   overlay.classList.remove('open');
   editingId = null;
@@ -28,6 +30,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Read and normalize form values before sending the request.
   const name = document.getElementById('fName').value.trim();
   const value = parseFloat(document.getElementById('fValue').value);
   const target = parseFloat(document.getElementById('fTarget').value);
@@ -45,6 +48,7 @@ form.addEventListener('submit', async (e) => {
       // never edited directly from the dashboard config UI.
       await api.update(editingId, { name, target, unit });
     } else {
+      // Keep the UI's four-card limit in sync with the available dashboard slots.
       if (kpis.length >= MAX_KPIS) return;
       await api.create({ name, target, unit, value, metric_type: 'manual.custom' });
     }

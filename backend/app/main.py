@@ -15,6 +15,8 @@ app = FastAPI(title="Dashboard on Myself API")
 
 
 class KpiCreate(BaseModel):
+    """Fields accepted when creating a KPI and its optional initial value."""
+
     name: str = Field(..., min_length=1, max_length=64)
     target: float = Field(..., gt=0)
     unit: Optional[str] = Field(default=None, max_length=20)
@@ -23,12 +25,16 @@ class KpiCreate(BaseModel):
 
 
 class KpiUpdate(BaseModel):
+    """Optional fields that can be changed on an existing KPI."""
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=64)
     target: Optional[float] = Field(default=None, gt=0)
     unit: Optional[str] = Field(default=None, max_length=20)
 
 
 class KpiRead(BaseModel):
+    """KPI representation returned to the dashboard client."""
+
     id: str
     metric_type: str
     name: str
@@ -38,6 +44,7 @@ class KpiRead(BaseModel):
 
 
 def get_demo_user(db: Session) -> User:
+    """Return the shared demo account, creating it the first time it is needed."""
     user = db.execute(select(User).where(User.email == "demo@dashboard.local")).scalar_one_or_none()
     if user is None:
         user = User(email="demo@dashboard.local", full_name="Demo User", is_active=True)
@@ -48,11 +55,13 @@ def get_demo_user(db: Session) -> User:
 
 
 def make_metric_type(name: str) -> str:
+    """Turn a user-provided metric name into a stable manual metric key."""
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
     return f"manual.{slug or 'metric'}"
 
 
 def serialize_goal(db: Session, goal: Goal) -> dict[str, Any]:
+    """Combine a goal with its display metadata and most recent recorded value."""
     metric = db.get(MetricCatalog, goal.metric_type)
     fact = (
         db.execute(
@@ -77,11 +86,13 @@ def serialize_goal(db: Session, goal: Goal) -> dict[str, Any]:
 
 @app.get("/health")
 def health_check():
+    """Return a simple response for checking that the API process is reachable."""
     return {"status": "ok"}
 
 
 @app.get("/api/kpis", response_model=list[KpiRead])
 def list_kpis():
+    """List the demo user's goals as dashboard-ready KPI records."""
     db = SessionLocal()
     try:
         user = get_demo_user(db)
@@ -93,6 +104,7 @@ def list_kpis():
 
 @app.post("/api/kpis", response_model=KpiRead)
 def create_kpi(payload: KpiCreate):
+    """Create a metric definition and goal, plus an initial fact when supplied."""
     db = SessionLocal()
     try:
         user = get_demo_user(db)
@@ -117,6 +129,7 @@ def create_kpi(payload: KpiCreate):
             period="all_time",
         )
         db.add(goal)
+        # Insert the new metric and goal before an optional fact references them.
         db.flush()
 
         if payload.value is not None:
@@ -139,6 +152,7 @@ def create_kpi(payload: KpiCreate):
 
 @app.put("/api/kpis/{kpi_id}", response_model=KpiRead)
 def update_kpi(kpi_id: str, payload: KpiUpdate):
+    """Update the selected goal or its metric display metadata."""
     db = SessionLocal()
     try:
         goal = db.get(Goal, UUID(kpi_id))
@@ -166,6 +180,7 @@ def update_kpi(kpi_id: str, payload: KpiUpdate):
 
 @app.delete("/api/kpis/{kpi_id}")
 def delete_kpi(kpi_id: str):
+    """Delete a goal belonging to the shared demo user's dashboard."""
     db = SessionLocal()
     try:
         goal = db.get(Goal, UUID(kpi_id))

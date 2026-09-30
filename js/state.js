@@ -1,4 +1,4 @@
-// Single source of truth for the current view. Kept deliberately tiny —
-// render.js reads it, modal.js writes to it via api.js then triggers a reload.
+// Single source of truth for the current view; KPI objects match the mock/API response shape.
+// render.js reads this state, while modal.js saves changes through api.js and reloads it.
 let kpis = [];
 let editingId = null;

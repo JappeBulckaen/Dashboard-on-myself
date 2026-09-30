@@ -1,3 +1,4 @@
+// Fill the greeting and date using the viewer's local time.
 function setGreeting(){
   const h = new Date().getHours();
   const g = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
