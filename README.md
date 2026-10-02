@@ -4,7 +4,7 @@ A personal KPI dashboard MVP. The frontend displays KPI values and targets; a Fa
 
 ## Project Status
 
-The frontend and backend foundations are in place. The frontend currently uses its mock API by default. The backend has KPI create, list, update, and delete routes, but the last saved development note reported that creating a KPI returned an Internal Server Error. Verify the current API behavior before treating those routes as fully working.
+The frontend and backend foundations are in place. The frontend currently uses its mock API by default. The backend's health and KPI create, list, update, and delete routes have been verified. A pytest suite now covers request validation and the KPI API; database integration tests require a separate `TEST_DATABASE_URL`.
 
 ## Project Structure
 
@@ -17,6 +17,8 @@ The frontend and backend foundations are in place. The frontend currently uses i
 - `backend/app/main.py`: FastAPI routes and request/response models.
 - `backend/app/models.py`: SQLAlchemy database models.
 - `backend/app/db.py`, `backend/app/config.py`: Database connection and settings.
+- `backend/tests/`, `backend/TESTING.md`: Backend regression tests and test instructions.
+- `backend/requirements-dev.txt`: Development-only test dependencies.
 - `backend/create_schema.py`: Creates database tables.
 - `backend/validate_db.py`: Checks database configuration and connectivity.
 - `scripts/Stop-Backend.ps1`: Stops the local Uvicorn backend process.
@@ -64,6 +66,17 @@ Open `dashboard-mvp.html` in a browser. By default, it uses the in-memory mock A
 
 To use the FastAPI backend instead, configure `API_BASE` in `js/api.js` to point to the running API. The frontend/backend integration should be verified before relying on it.
 
+## Testing
+
+From the `backend` directory, install development dependencies and run the suite:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+The VS Code task **Run Backend Tests** runs the suite with the project's virtual environment. See [backend/TESTING.md](backend/TESTING.md) for coverage and the separate PostgreSQL test-database requirements.
+
 ## API
 
 | Method | Endpoint | Purpose |
@@ -84,5 +97,4 @@ The database models cover users, metric definitions, recorded facts, goals, dash
 
 - The frontend uses mock data unless `API_BASE` is configured.
 - The backend currently uses a demo user rather than authenticated accounts.
-- KPI creation was previously reported to fail; verify the endpoint before documenting it as working.
 - The VS Code backend tasks currently contain machine-specific paths and may need adjustment to work on another computer.

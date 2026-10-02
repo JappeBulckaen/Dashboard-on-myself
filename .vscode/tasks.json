@@ -32,6 +32,23 @@
       "isBackground": false,
       "problemMatcher": [],
       "group": "build"
+    },
+    {
+      "label": "Run Backend Tests",
+      "type": "process",
+      "command": "C:\\Users\\jappe\\OneDrive\\Documenten\\projects\\Dashboard on myself\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "options": {
+        "cwd": "C:\\Users\\jappe\\OneDrive\\Documenten\\projects\\Dashboard on myself\\backend",
+        "envFile": "${workspaceFolder}/.env"
+      },
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "test"
     }
   ]
 }

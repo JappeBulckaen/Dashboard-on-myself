@@ -3,12 +3,12 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from app.db import get_db
 from app.models import Fact, Goal, MetricCatalog, User
 
 app = FastAPI(title="Dashboard on Myself API")
@@ -91,103 +91,88 @@ def health_check():
 
 
 @app.get("/api/kpis", response_model=list[KpiRead])
-def list_kpis():
+def list_kpis(db: Session = Depends(get_db)):
     """List the demo user's goals as dashboard-ready KPI records."""
-    db = SessionLocal()
-    try:
-        user = get_demo_user(db)
-        goals = db.execute(select(Goal).where(Goal.user_id == user.id)).scalars().all()
-        return [serialize_goal(db, goal) for goal in goals]
-    finally:
-        db.close()
+    user = get_demo_user(db)
+    goals = db.execute(select(Goal).where(Goal.user_id == user.id)).scalars().all()
+    return [serialize_goal(db, goal) for goal in goals]
 
 
 @app.post("/api/kpis", response_model=KpiRead)
-def create_kpi(payload: KpiCreate):
+def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
     """Create a metric definition and goal, plus an initial fact when supplied."""
-    db = SessionLocal()
-    try:
-        user = get_demo_user(db)
-        metric_type = payload.metric_type or make_metric_type(payload.name)
+    user = get_demo_user(db)
+    metric_type = payload.metric_type or make_metric_type(payload.name)
 
-        metric = db.get(MetricCatalog, metric_type)
-        if metric is None:
-            metric = MetricCatalog(
-                metric_type=metric_type,
-                display_name=payload.name,
-                category="manual",
-                default_unit=payload.unit,
-                description="Created in the dashboard MVP",
-            )
-            db.add(metric)
-
-        goal = Goal(
-            user_id=user.id,
+    metric = db.get(MetricCatalog, metric_type)
+    if metric is None:
+        metric = MetricCatalog(
             metric_type=metric_type,
-            target_value=payload.target,
-            direction="at_least",
-            period="all_time",
+            display_name=payload.name,
+            category="manual",
+            default_unit=payload.unit,
+            description="Created in the dashboard MVP",
         )
-        db.add(goal)
-        # Insert the new metric and goal before an optional fact references them.
+        db.add(metric)
         db.flush()
 
-        if payload.value is not None:
-            fact = Fact(
-                user_id=user.id,
-                source_app="manual",
-                metric_type=metric_type,
-                value=payload.value,
-                unit=payload.unit or metric.default_unit,
-                observed_at=datetime.utcnow(),
-            )
-            db.add(fact)
+    goal = Goal(
+        user_id=user.id,
+        metric_type=metric_type,
+        target_value=payload.target,
+        direction="at_least",
+        period="all_time",
+    )
+    db.add(goal)
+    # Insert the goal before an optional fact references it.
+    db.flush()
 
-        db.commit()
-        db.refresh(goal)
-        return serialize_goal(db, goal)
-    finally:
-        db.close()
+    if payload.value is not None:
+        fact = Fact(
+            user_id=user.id,
+            source_app="manual",
+            metric_type=metric_type,
+            value=payload.value,
+            unit=payload.unit or metric.default_unit,
+            observed_at=datetime.utcnow(),
+        )
+        db.add(fact)
+
+    db.commit()
+    db.refresh(goal)
+    return serialize_goal(db, goal)
 
 
 @app.put("/api/kpis/{kpi_id}", response_model=KpiRead)
-def update_kpi(kpi_id: str, payload: KpiUpdate):
+def update_kpi(kpi_id: UUID, payload: KpiUpdate, db: Session = Depends(get_db)):
     """Update the selected goal or its metric display metadata."""
-    db = SessionLocal()
-    try:
-        goal = db.get(Goal, UUID(kpi_id))
-        if goal is None:
-            raise HTTPException(status_code=404, detail="KPI not found")
+    goal = db.get(Goal, kpi_id)
+    if goal is None:
+        raise HTTPException(status_code=404, detail="KPI not found")
 
-        if payload.name is not None:
-            metric = db.get(MetricCatalog, goal.metric_type)
-            if metric is not None:
-                metric.display_name = payload.name
+    if payload.name is not None:
+        metric = db.get(MetricCatalog, goal.metric_type)
+        if metric is not None:
+            metric.display_name = payload.name
 
-        if payload.target is not None:
-            goal.target_value = payload.target
+    if payload.target is not None:
+        goal.target_value = payload.target
 
-        if payload.unit is not None:
-            metric = db.get(MetricCatalog, goal.metric_type)
-            if metric is not None:
-                metric.default_unit = payload.unit
+    if payload.unit is not None:
+        metric = db.get(MetricCatalog, goal.metric_type)
+        if metric is not None:
+            metric.default_unit = payload.unit
 
-        db.commit()
-        return serialize_goal(db, goal)
-    finally:
-        db.close()
+    db.commit()
+    return serialize_goal(db, goal)
 
 
 @app.delete("/api/kpis/{kpi_id}")
-def delete_kpi(kpi_id: str):
+def delete_kpi(kpi_id: UUID, db: Session = Depends(get_db)):
     """Delete a goal belonging to the shared demo user's dashboard."""
-    db = SessionLocal()
-    try:
-        goal = db.get(Goal, UUID(kpi_id))
-        if goal is None:
-            raise HTTPException(status_code=404, detail="KPI not found")
-        db.delete(goal)
-        db.commit()
-        return {"status": "deleted"}
-    finally:
-        db.close()
+    goal = db.get(Goal, kpi_id)
+    if goal is None:
+        raise HTTPException(status_code=404, detail="KPI not found")
+    db.delete(goal)
+    db.commit()
+    return {"status": "deleted"}
