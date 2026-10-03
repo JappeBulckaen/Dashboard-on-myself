@@ -18,9 +18,18 @@ The VS Code task **Run Backend Tests** runs the same command with the project's 
 
 ## Database safety
 
-Health and request-validation tests do not need a database. KPI integration tests require `TEST_DATABASE_URL` to point to a separate, empty, disposable PostgreSQL database. Add it to your local `.env` file using the commented example in `.env.example`; the VS Code test task loads that file. Do not point it at the normal application database. The test setup checks that the database identity differs from `DATABASE_URL`, creates missing tables, and wraps each test in a rollback so test rows do not persist.
+Health and request-validation tests do not need a database. KPI integration tests run against a disposable PostgreSQL schema created on the same configured app database for each test session. This keeps the tests realistic without requiring a second database URL.
 
-Without `TEST_DATABASE_URL`, database integration tests are reported as skipped; the non-database tests still run. The integration tests use the real PostgreSQL schema because its UUID defaults are PostgreSQL-specific.
+The test bootstrap generates a unique schema name such as `test_<uuid>`, creates the app tables in that schema, binds each database session to it by using `SET LOCAL search_path`, and drops the schema again after the run finishes. This gives each run a clean, isolated dataset while still exercising the real PostgreSQL behavior and UUID defaults.
+
+## Implementation notes and bugfixes
+
+Two issues surfaced while wiring the test environment to the configured Neon database:
+
+1. The configured `DATABASE_URL` used the raw `postgresql://` scheme without an explicit driver. SQLAlchemy defaulted to `psycopg2`, which was not installed in the virtual environment. The fix was to normalize the URL centrally in `app/db.py` so app code and tests both use `postgresql+psycopg://...` when required.
+2. Simply setting `search_path` after a connection had already started a transaction caused SQLAlchemy to complain about an already-initialized transaction. The fix was to begin the transaction first and then issue `SET LOCAL search_path TO ...`, ensuring each test session remains bound to the disposable schema without leaking state.
+
+These fixes are intentionally captured in the runtime code and test bootstrap so future contributors know why the schema-per-run strategy exists.
 
 ## Current test coverage
 
@@ -34,9 +43,10 @@ Without `TEST_DATABASE_URL`, database integration tests are reported as skipped;
 
 ## Next test layers
 
-- Add opt-in test-schema isolation so integration tests can safely use the configured Neon database: create a unique schema per run, bind test sessions with SQLAlchemy `schema_translate_map`, reject the default/application schema, and drop the test schema during teardown. Until implemented, keep using a separate test database URL.
 - Database constraint behavior, duplicate metric/goal handling, and rollback after failures.
 - Authentication and user-data isolation when the demo account is replaced.
 - Connector unit tests for source-to-fact normalization, duplicate ingestion, token refresh, and error handling.
 - Sync integration tests for retries, partial failures, and `SyncRun` status.
 - Frontend/API contract tests for loading, empty, success, and error states.
+
+The current schema-per-run setup is the active alpha-phase strategy and is already implemented in `backend/tests/conftest.py`.
