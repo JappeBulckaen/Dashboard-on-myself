@@ -4,7 +4,11 @@ A personal KPI dashboard MVP. The frontend displays KPI values and targets; a Fa
 
 ## Project Status
 
-The frontend and backend foundations are in place. The frontend currently uses its mock API by default. The backend's health and KPI create, list, update, and delete routes have been verified. A pytest suite now covers request validation and the KPI API; database integration tests require a separate `TEST_DATABASE_URL`.
+The frontend and backend foundations are in place. The frontend currently uses its mock API by default, but the local integration path is now wired to the running backend for validation.
+
+The backend's health and KPI create, list, update, and delete routes have been verified. The test suite runs against a disposable PostgreSQL schema created per run, so each test session uses a clean, isolated dataset without needing a separate `TEST_DATABASE_URL`.
+
+The PostgreSQL URL normalization bug was also fixed: the app and tests now convert a raw `postgresql://...` URL to `postgresql+psycopg://...` when needed, which avoids the `ModuleNotFoundError: No module named 'psycopg2'` issue during engine creation.
 
 ## Project Structure
 

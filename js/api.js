@@ -6,7 +6,7 @@ const ACCENTS = ['var(--blue-1)', 'var(--blue-2)', 'var(--blue-3)', 'var(--blue-
 // The server returns KPI fields { id, metric_type, name, value, target, unit }.
 // POST accepts name/target plus optional unit/value/metric_type; PUT accepts name/target/unit.
 // DELETE currently returns { status: "deleted" }.
-const API_BASE = '';
+const API_BASE = 'http://127.0.0.1:8000';
 
 const api = {
   async list(){
