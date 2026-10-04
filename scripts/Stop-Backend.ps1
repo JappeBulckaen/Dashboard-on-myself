@@ -1,26 +1,34 @@
-$pattern = 'uvicorn app.main:app --reload'
-$procs = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match $pattern }
+$pattern = 'uvicorn'
+$portPids = @(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+$procs = Get-CimInstance Win32_Process | Where-Object {
+    ($_.CommandLine -match $pattern -and $_.CommandLine -match 'app\.main:app') -or ($_.ProcessId -in $portPids)
+}
 
-if (-not $procs) {
+$ids = @($procs | Select-Object -ExpandProperty ProcessId | Sort-Object -Unique)
+
+if (-not $ids) {
     Write-Host 'No backend process found.'
     exit 0
 }
 
-foreach ($p in $procs) {
+foreach ($id in $ids) {
     try {
-        Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
-        Write-Host "Stopped PID $($p.ProcessId)"
+        Stop-Process -Id $id -Force -ErrorAction Stop
+        Write-Host "Stopped PID $id"
     }
     catch {
-        Write-Host "Could not stop PID $($p.ProcessId): $($_.Exception.Message)"
+        Write-Host ("Could not stop PID {0}: {1}" -f $id, $_.Exception.Message)
     }
 }
 
-$remaining = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match $pattern }
+$remaining = @(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+$remainingProcs = Get-CimInstance Win32_Process | Where-Object {
+    ($_.CommandLine -match $pattern -and $_.CommandLine -match 'app\.main:app') -or ($_.ProcessId -in $remaining)
+}
 
-if ($remaining) {
-    $ids = ($remaining | ForEach-Object { $_.ProcessId }) -join ', '
-    Write-Host "Still running: $ids"
+if ($remainingProcs) {
+    $idsLeft = ($remainingProcs | Select-Object -ExpandProperty ProcessId | Sort-Object -Unique) -join ', '
+    Write-Host "Still running: $idsLeft"
     exit 1
 }
 
