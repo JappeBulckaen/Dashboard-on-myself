@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard on Myself | Project Status</title>
+<style>
+  @page { size: A4; margin: 13mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #172b35; font: 10pt/1.35 "Segoe UI", Arial, sans-serif; background: #fff; }
+  .top { padding: 17px 20px 15px; color: #fff; background: #173b43; border-bottom: 5px solid #e6ad4f; }
+  .eyebrow { color: #f1c56d; font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+  h1 { margin: 4px 0 3px; font: 25pt/1.05 Georgia, serif; }
+  .subtitle { margin: 0; color: #e0eaeb; font-size: 10pt; }
+  .date { float: right; margin-top: 1px; color: #dbe5e4; font-size: 8pt; }
+  .status { display: flex; gap: 7px; margin: 12px 0; }
+  .pill { flex: 1; padding: 7px 9px; background: #f0f4f2; border-left: 3px solid #438674; }
+  .pill b { display: block; font-size: 9pt; }
+  .pill span { color: #52666b; font-size: 8pt; }
+  h2 { margin: 11px 0 4px; color: #173b43; font-size: 11pt; }
+  p { margin: 3px 0 6px; }
+  .flow { display: flex; align-items: center; gap: 5px; margin: 6px 0; padding: 8px; background: #f5f7f5; border: 1px solid #dce4df; text-align: center; }
+  .flow div { flex: 1; padding: 5px 3px; background: white; border: 1px solid #dce4df; font-weight: 600; }
+  .arrow { flex: 0 0 auto; color: #b6782d; font-weight: 700; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  ul { margin: 3px 0 0; padding-left: 16px; }
+  li { margin: 2px 0; }
+  .schema { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 9px; }
+  .schema div { padding: 4px 6px; background: #f5f7f5; border-left: 2px solid #438674; }
+  .schema b { color: #173b43; }
+  .note { margin-top: 5px; color: #52666b; font-size: 8pt; }
+  .footer { margin-top: 10px; padding-top: 5px; border-top: 1px solid #dce4df; color: #637579; font-size: 7.5pt; }
+</style>
+</head>
+<body>
+<header class="top">
+  <span class="date">12 October 2026</span>
+  <div class="eyebrow">Project Progress Snapshot</div>
+  <h1>Dashboard on Myself</h1>
+  <p class="subtitle">A personal KPI dashboard MVP: define goals, see current values, and build toward connected data sources.</p>
+</header>
+<section class="status">
+  <div class="pill"><b>Working foundation</b><span>Browser UI + FastAPI + PostgreSQL</span></div>
+  <div class="pill"><b>Core API</b><span>Health and KPI create/read/update/delete</span></div>
+  <div class="pill"><b>Backend tests</b><span>19 passed in latest run</span></div>
+</section>
+<h2>How the app fits together</h2>
+<div class="flow">
+  <div>Dashboard<br><small>HTML / CSS / JavaScript</small></div><span class="arrow">→</span>
+  <div>API client<br><small>fetch requests</small></div><span class="arrow">→</span>
+  <div>FastAPI<br><small>Python endpoints</small></div><span class="arrow">→</span>
+  <div>SQLAlchemy<br><small>database access</small></div><span class="arrow">→</span>
+  <div>PostgreSQL<br><small>persistent data</small></div>
+</div>
+<p>The browser sends KPI requests to the local API. The API validates them and reads or writes PostgreSQL. The frontend currently points to <b>http://127.0.0.1:8000</b>; this is local development configuration, not a deployed environment.</p>
+<div class="columns">
+  <section>
+    <h2>General data schema</h2>
+    <div class="schema">
+      <div><b>User</b><br>Owns dashboard data (currently one shared demo user).</div>
+      <div><b>MetricCatalog</b><br>Defines metric name, category, unit, and aggregation.</div>
+      <div><b>Goal</b><br>Stores the user's target, period, and metric reference.</div>
+      <div><b>Fact</b><br>Stores timestamped observed values and their source.</div>
+      <div><b>Connection</b><br>Designed to store external-provider connection/token metadata.</div>
+      <div><b>SyncRun</b><br>Designed to record connector sync status and results.</div>
+    </div>
+    <p class="note">A KPI shown in the UI combines a Goal with its MetricCatalog details and latest Fact. DashboardLayout is also modeled for future saved widget configuration.</p>
+  </section>
+  <section>
+    <h2>Set up and verified</h2>
+    <ul>
+      <li>Plain HTML/CSS/JavaScript dashboard with KPI cards and create/edit/delete form.</li>
+      <li>FastAPI health endpoint and KPI CRUD routes.</li>
+      <li>PostgreSQL persistence through SQLAlchemy and psycopg.</li>
+      <li>Live browser CRUD flow was validated against the API.</li>
+      <li>Tests use a disposable PostgreSQL schema per run; latest suite: 19 passed.</li>
+      <li>Mock API exists as a development fallback; current API URL is hardcoded locally.</li>
+    </ul>
+  </section>
+</div>
+<div class="columns">
+  <section>
+    <h2>Still missing / next</h2>
+    <ul>
+      <li>Real user accounts, authentication, and per-user data access.</li>
+      <li>External provider authorization, data import, scheduling, retries, and sync UI.</li>
+      <li>Production/staging configuration and a deployed hosting environment.</li>
+      <li>Frontend/API configuration that selects the API URL by environment.</li>
+      <li>Complete browser verification of loading and API-error states.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Current scope</h2>
+    <p>This is an alpha/MVP foundation, not yet a production service. Manual KPI CRUD and the backend data model are in place. Connector-related tables are groundwork only: no real connector currently imports user data.</p>
+    <p class="note">Near-term priorities: explain the backend/services and integrations; finish UI state checks; make API configuration deployment-ready; then design manual-versus-connector KPI behavior.</p>
+  </section>
+</div>
+<footer class="footer">Prepared from the current project files and a fresh backend test run. “Modeled” means database structure exists; it does not mean the corresponding user-facing integration is implemented.</footer>
+</body>
+</html>
