@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 from typing import Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -103,8 +103,22 @@ def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
     """Create a metric definition and goal, plus an initial fact when supplied."""
     user = get_demo_user(db)
     metric_type = payload.metric_type or make_metric_type(payload.name)
-
     metric = db.get(MetricCatalog, metric_type)
+    existing_goal = db.execute(
+        select(Goal).where(
+            Goal.user_id == user.id,
+            Goal.metric_type == metric_type,
+            Goal.period == "all_time",
+        )
+    ).scalar_one_or_none()
+
+    if payload.metric_type and existing_goal is not None:
+        raise HTTPException(status_code=409, detail="A KPI already exists for this metric")
+
+    if payload.metric_type is None and metric is not None:
+        metric_type = f"{metric_type}_{uuid4().hex}"
+        metric = None
+
     if metric is None:
         metric = MetricCatalog(
             metric_type=metric_type,

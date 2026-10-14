@@ -50,7 +50,7 @@ form.addEventListener('submit', async (e) => {
     } else {
       // Keep the UI's four-card limit in sync with the available dashboard slots.
       if (kpis.length >= MAX_KPIS) return;
-      await api.create({ name, target, unit, value, metric_type: 'manual.custom' });
+      await api.create({ name, target, unit, value });
     }
     closeModal();
     await loadKpis();

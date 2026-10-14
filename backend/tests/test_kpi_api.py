@@ -53,6 +53,29 @@ def test_create_kpi_without_initial_value_defaults_to_zero(api_client: TestClien
     assert response.json()["value"] == 0
 
 
+def test_create_kpis_without_explicit_metric_type_get_distinct_metrics(api_client: TestClient) -> None:
+    payload = create_payload()
+    payload.pop("metric_type")
+
+    first = api_client.post("/api/kpis", json=payload)
+    second = api_client.post("/api/kpis", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["metric_type"] != second.json()["metric_type"]
+
+
+def test_create_kpi_rejects_duplicate_explicit_metric_type(api_client: TestClient) -> None:
+    payload = create_payload()
+
+    first = api_client.post("/api/kpis", json=payload)
+    second = api_client.post("/api/kpis", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["detail"] == "A KPI already exists for this metric"
+
+
 def test_update_changes_only_supplied_fields(api_client: TestClient) -> None:
     payload = create_payload()
     payload["value"] = 5000
