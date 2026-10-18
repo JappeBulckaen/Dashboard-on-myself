@@ -10,6 +10,27 @@ The backend's health and KPI create, list, update, and delete routes have been v
 
 The PostgreSQL URL normalization bug was also fixed: the app and tests now convert a raw `postgresql://...` URL to `postgresql+psycopg://...` when needed, which avoids the `ModuleNotFoundError: No module named 'psycopg2'` issue during engine creation.
 
+## Planned Product Pivot: Life-Domain Overview
+
+The product direction is to evolve this KPI dashboard into a smartphone-first overview of a person's life. The home screen will show progress rings for life domains (for example, Health & Fitness, Productivity, Finance, Relationships, and Household), with a score and year-over-year trend for each. Selecting a domain will open a separate view of its individual KPIs and habits.
+
+The first version is planned as an installable Progressive Web App (PWA), keeping the current frontend and FastAPI/PostgreSQL backend where practical. Domain scores will be aggregated from user-defined KPIs and habits. Each KPI belongs to exactly one life domain. Domains will start from a predefined set that users can rename and reorder.
+
+### Pivot Plan
+
+1. Agree on the initial domain list and define how domain progress and year-over-year change are calculated, including lower-is-better KPIs and missing data.
+2. Add a user-owned life-domain model. Keep the existing `User`, `MetricCatalog`, `Fact`, `Goal`, and dashboard layout models where they remain useful.
+3. Add a `domain_id` foreign key to `Goal`, the user-specific KPI/goal record, so each KPI has one domain assignment. Do not put this assignment on `MetricCatalog`, since a metric definition can be reused and domain ownership is per user's KPI.
+4. Introduce versioned database migrations and migrate existing KPIs into appropriate domains, with a safe fallback for unclassified records.
+5. Keep KPI create, read, update, and delete (CRUD) functionality. Extend KPI creation and updates to accept a domain, and include domain information in KPI responses.
+6. Add API support for listing, renaming, and reordering a user's predefined domains, plus a domain-summary response containing its score, trend, and associated KPIs.
+7. Change the home screen from individual KPI cards to one progress ring per life domain. Put individual KPI/habit management and history on the domain's separate page.
+8. Make the current frontend mobile-first and PWA-installable, including manifest, service worker, and appropriate mobile navigation and offline/error states.
+9. Add yes/no habit check-ins as timestamped records so answers can support history and progress calculations. Add push subscriptions and reminders after the core PWA and authenticated user flows are in place.
+10. Expand backend and frontend tests for domain assignment, score aggregation, trends, check-in history, user-data isolation, and the new mobile flows; pilot with sample data before relying on migrated real data.
+
+The existing PostgreSQL setup, FastAPI service, SQLAlchemy models, KPI CRUD, facts, and goals are intended to be retained and evolved rather than replaced. The current shared demo account must be replaced with authenticated, user-isolated access before storing real personal data. Push notifications also require a secure deployed origin.
+
 ## Project Structure
 
 - `dashboard-mvp.html`, `style.css`: Dashboard page and styling.
