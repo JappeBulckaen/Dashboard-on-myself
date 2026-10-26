@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -54,6 +54,25 @@ class MetricCatalog(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
 
+class LifeDomain(Base):
+    """A user's life domain used to group their KPIs on the overview."""
+
+    __tablename__ = "life_domains"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    key = Column(String(80), nullable=False)
+    name = Column(String(80), nullable=False)
+    position = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_life_domains_user_key"),
+        UniqueConstraint("user_id", "name", name="uq_life_domains_user_name"),
+        Index("ix_life_domains_user_position", "user_id", "position"),
+    )
+
+
 class Fact(Base):
     """A timestamped observation of a metric from a particular source."""
 
@@ -79,6 +98,7 @@ class Goal(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     metric_type = Column(String(150), ForeignKey("metric_catalog.metric_type"), nullable=False)
+    domain_id = Column(UUID(as_uuid=True), ForeignKey("life_domains.id", ondelete="RESTRICT"), nullable=False)
     target_value = Column(Numeric(precision=18, scale=6), nullable=False)
     direction = Column(String(20), nullable=False)
     period = Column(String(50), nullable=False, default="all_time")

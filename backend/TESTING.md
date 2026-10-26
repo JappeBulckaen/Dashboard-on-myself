@@ -37,6 +37,8 @@ These fixes are intentionally captured in the runtime code and test bootstrap so
 - KPI request validation rejects missing, invalid, or out-of-range values.
 - Invalid UUID path parameters return `422`.
 - KPI listing, creation with and without an initial fact, and response serialization.
+- Default life-domain listing, required KPI domain assignment, domain reassignment, and progress direction.
+- Missing initial values remain distinguishable from recorded zero values.
 - KPI updates change only supplied fields and report missing records as `404`.
 - KPI deletion removes the goal from the API list and reports missing records as `404`.
 - KPI listing selects the latest fact for a metric.

@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -9,9 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Fact, Goal, MetricCatalog, User
+from app.models import Fact, Goal, LifeDomain, MetricCatalog, User
 
 app = FastAPI(title="Dashboard on Myself API")
+
+DEFAULT_DOMAINS = (
+    ("health_fitness", "Health & Fitness", 0),
+    ("productivity", "Productivity", 1),
+    ("finance", "Finance", 2),
+    ("relationships", "Relationships", 3),
+    ("household", "Household", 4),
+    ("other", "Other", 5),
+)
 
 
 class KpiCreate(BaseModel):
@@ -19,6 +28,8 @@ class KpiCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=64)
     target: float = Field(..., gt=0)
+    domain_id: UUID
+    direction: Literal["at_least", "at_most"] = "at_least"
     unit: Optional[str] = Field(default=None, max_length=20)
     value: Optional[float] = Field(default=None, ge=0)
     metric_type: Optional[str] = None
@@ -29,6 +40,8 @@ class KpiUpdate(BaseModel):
 
     name: Optional[str] = Field(default=None, min_length=1, max_length=64)
     target: Optional[float] = Field(default=None, gt=0)
+    domain_id: Optional[UUID] = None
+    direction: Optional[Literal["at_least", "at_most"]] = None
     unit: Optional[str] = Field(default=None, max_length=20)
 
 
@@ -38,9 +51,34 @@ class KpiRead(BaseModel):
     id: str
     metric_type: str
     name: str
+    domain_id: str
+    domain_name: str
+    direction: Literal["at_least", "at_most"]
     value: float
+    has_value: bool
     target: float
     unit: Optional[str] = None
+
+
+class LifeDomainRead(BaseModel):
+    id: str
+    key: str
+    name: str
+    position: int
+
+
+def ensure_default_domains(db: Session, user: User) -> None:
+    existing_keys = set(
+        db.execute(select(LifeDomain.key).where(LifeDomain.user_id == user.id)).scalars().all()
+    )
+    missing_domains = [
+        LifeDomain(user_id=user.id, key=key, name=name, position=position)
+        for key, name, position in DEFAULT_DOMAINS
+        if key not in existing_keys
+    ]
+    if missing_domains:
+        db.add_all(missing_domains)
+        db.commit()
 
 
 def get_demo_user(db: Session) -> User:
@@ -49,9 +87,18 @@ def get_demo_user(db: Session) -> User:
     if user is None:
         user = User(email="demo@dashboard.local", full_name="Demo User", is_active=True)
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        db.flush()
+    ensure_default_domains(db, user)
     return user
+
+
+def get_user_domain(db: Session, user: User, domain_id: UUID) -> LifeDomain:
+    domain = db.execute(
+        select(LifeDomain).where(LifeDomain.id == domain_id, LifeDomain.user_id == user.id)
+    ).scalar_one_or_none()
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Life domain not found")
+    return domain
 
 
 def make_metric_type(name: str) -> str:
@@ -72,13 +119,18 @@ def serialize_goal(db: Session, goal: Goal) -> dict[str, Any]:
         )
         .scalar_one_or_none()
     )
+    domain = db.get(LifeDomain, goal.domain_id)
     value = float(fact.value) if fact is not None else 0.0
     unit = metric.default_unit if metric and metric.default_unit else (fact.unit if fact is not None else None)
     return {
         "id": str(goal.id),
         "metric_type": goal.metric_type,
         "name": metric.display_name if metric else goal.metric_type,
+        "domain_id": str(goal.domain_id),
+        "domain_name": domain.name,
+        "direction": goal.direction,
         "value": value,
+        "has_value": fact is not None,
         "target": float(goal.target_value),
         "unit": unit,
     }
@@ -88,6 +140,21 @@ def serialize_goal(db: Session, goal: Goal) -> dict[str, Any]:
 def health_check():
     """Return a simple response for checking that the API process is reachable."""
     return {"status": "ok"}
+
+
+@app.get("/api/domains", response_model=list[LifeDomainRead])
+def list_domains(db: Session = Depends(get_db)):
+    """List the demo user's life domains in their configured order."""
+    user = get_demo_user(db)
+    domains = db.execute(
+        select(LifeDomain)
+        .where(LifeDomain.user_id == user.id)
+        .order_by(LifeDomain.position, LifeDomain.name)
+    ).scalars().all()
+    return [
+        {"id": str(domain.id), "key": domain.key, "name": domain.name, "position": domain.position}
+        for domain in domains
+    ]
 
 
 @app.get("/api/kpis", response_model=list[KpiRead])
@@ -102,6 +169,7 @@ def list_kpis(db: Session = Depends(get_db)):
 def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
     """Create a metric definition and goal, plus an initial fact when supplied."""
     user = get_demo_user(db)
+    get_user_domain(db, user, payload.domain_id)
     metric_type = payload.metric_type or make_metric_type(payload.name)
     metric = db.get(MetricCatalog, metric_type)
     existing_goal = db.execute(
@@ -133,8 +201,9 @@ def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
     goal = Goal(
         user_id=user.id,
         metric_type=metric_type,
+        domain_id=payload.domain_id,
         target_value=payload.target,
-        direction="at_least",
+        direction=payload.direction,
         period="all_time",
     )
     db.add(goal)
@@ -160,9 +229,19 @@ def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
 @app.put("/api/kpis/{kpi_id}", response_model=KpiRead)
 def update_kpi(kpi_id: UUID, payload: KpiUpdate, db: Session = Depends(get_db)):
     """Update the selected goal or its metric display metadata."""
-    goal = db.get(Goal, kpi_id)
+    user = get_demo_user(db)
+    goal = db.execute(
+        select(Goal).where(Goal.id == kpi_id, Goal.user_id == user.id)
+    ).scalar_one_or_none()
     if goal is None:
         raise HTTPException(status_code=404, detail="KPI not found")
+
+    if payload.domain_id is not None:
+        get_user_domain(db, user, payload.domain_id)
+        goal.domain_id = payload.domain_id
+
+    if payload.direction is not None:
+        goal.direction = payload.direction
 
     if payload.name is not None:
         metric = db.get(MetricCatalog, goal.metric_type)
@@ -184,7 +263,10 @@ def update_kpi(kpi_id: UUID, payload: KpiUpdate, db: Session = Depends(get_db)):
 @app.delete("/api/kpis/{kpi_id}")
 def delete_kpi(kpi_id: UUID, db: Session = Depends(get_db)):
     """Delete a goal belonging to the shared demo user's dashboard."""
-    goal = db.get(Goal, kpi_id)
+    user = get_demo_user(db)
+    goal = db.execute(
+        select(Goal).where(Goal.id == kpi_id, Goal.user_id == user.id)
+    ).scalar_one_or_none()
     if goal is None:
         raise HTTPException(status_code=404, detail="KPI not found")
     db.delete(goal)

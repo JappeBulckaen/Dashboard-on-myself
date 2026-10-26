@@ -38,10 +38,21 @@
         <label for="fName">Name</label>
         <input id="fName" type="text" maxlength="24" placeholder="e.g. Weekly runs" required>
       </div>
+      <div class="field">
+        <label for="fDomain">Life domain</label>
+        <select id="fDomain" required></select>
+      </div>
+      <div class="field">
+        <label for="fDirection">Progress direction</label>
+        <select id="fDirection" required>
+          <option value="at_least">Higher is better</option>
+          <option value="at_most">Lower is better</option>
+        </select>
+      </div>
       <div class="field-row">
         <div class="field">
           <label for="fValue">Current value</label>
-          <input id="fValue" type="number" step="any" placeholder="0" required>
+          <input id="fValue" type="number" step="any" placeholder="Leave blank if not recorded">
         </div>
         <div class="field">
           <label for="fTarget">Target</label>

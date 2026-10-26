@@ -16,6 +16,16 @@ The product direction is to evolve this KPI dashboard into a smartphone-first ov
 
 The first version is planned as an installable Progressive Web App (PWA), keeping the current frontend and FastAPI/PostgreSQL backend where practical. Domain scores will be aggregated from user-defined KPIs and habits. Each KPI belongs to exactly one life domain. Domains will start from a predefined set that users can rename and reorder.
 
+### Agreed First-Pass Scoring Rules
+
+- Start with Health & Fitness, Productivity, Finance, Relationships, Household, and Other. Each KPI belongs to exactly one domain.
+- Keep both numeric KPIs and yes/no habits in KPI CRUD. A numeric KPI is scored against its positive target: higher-is-better uses `value / target`; lower-is-better uses `target / value` (a zero value is 100%). Clamp either result to 100%.
+- A habit score is yes check-ins divided by the expected weekdays in the calendar month. Each habit can have its own selected weekdays, and an unanswered expected day counts as no.
+- A domain score is the equal-weight average of the available KPI percentages. Numeric KPIs without a recorded value are excluded; if no KPI has a score, show no score.
+- Compare the last completed calendar month with the preceding completed month for MoM, and with the matching month one year earlier for YoY. Show the difference in percentage points (for example, 53% to 65% is +12 pp).
+
+The initial implementation slice adds life domains, requires a domain and progress direction when creating a numeric KPI, and preserves existing KPI CRUD. Existing KPIs are migrated to Other so they can be reassigned instead of being classified by guesswork. Habit schedules/check-ins, domain score aggregation, editable domain names/order, and the overview rings remain subsequent work.
+
 ### Pivot Plan
 
 1. Agree on the initial domain list and define how domain progress and year-over-year change are calculated, including lower-is-better KPIs and missing data.
@@ -42,9 +52,10 @@ The existing PostgreSQL setup, FastAPI service, SQLAlchemy models, KPI CRUD, fac
 - `backend/app/main.py`: FastAPI routes and request/response models.
 - `backend/app/models.py`: SQLAlchemy database models.
 - `backend/app/db.py`, `backend/app/config.py`: Database connection and settings.
+- `backend/alembic/`: Versioned database migrations.
 - `backend/tests/`, `backend/TESTING.md`: Backend regression tests and test instructions.
 - `backend/requirements-dev.txt`: Development-only test dependencies.
-- `backend/create_schema.py`: Creates database tables.
+- `backend/create_schema.py`: Initializes a new schema or applies pending migrations.
 - `backend/validate_db.py`: Checks database configuration and connectivity.
 - `scripts/Stop-Backend.ps1`: Stops the local Uvicorn backend process.
 
@@ -66,7 +77,7 @@ python -m pip install -r backend\requirements.txt
 
 Create a local `.env` file based on `.env.example`, then set `DATABASE_URL` to your PostgreSQL connection string. Keep credentials in `.env`; do not commit them.
 
-Create the database tables from the `backend` directory:
+Create the database schema or apply pending migrations from the `backend` directory:
 
 ```powershell
 Set-Location backend
@@ -107,16 +118,17 @@ The VS Code task **Run Backend Tests** runs the suite with the project's virtual
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Check that the API is running. |
+| `GET` | `/api/domains` | List the demo user's life domains in display order. |
 | `GET` | `/api/kpis` | List KPIs for the demo user. |
 | `POST` | `/api/kpis` | Create a KPI. |
-| `PUT` | `/api/kpis/{kpi_id}` | Update a KPI's name, target, or unit. |
+| `PUT` | `/api/kpis/{kpi_id}` | Update a KPI's name, target, domain, direction, or unit. |
 | `DELETE` | `/api/kpis/{kpi_id}` | Delete a KPI. |
 
-A KPI response contains `id`, `metric_type`, `name`, `value`, `target`, and `unit`. The create request accepts `name` and `target`, with optional `unit`, `value`, and `metric_type`.
+A KPI response contains `id`, `metric_type`, `name`, `domain_id`, `domain_name`, `direction`, `value`, `has_value`, `target`, and `unit`. `has_value` distinguishes an actual zero reading from a KPI with no recorded value yet. The create request requires `name`, `target`, and `domain_id`; `direction` defaults to `at_least` and may be `at_most`. `unit`, `value`, and `metric_type` are optional.
 
 ## Data Model
 
-The database models cover users, metric definitions, recorded facts, goals, dashboard layouts, external connections, and sync runs. The current KPI routes use a demo user; authentication and external data synchronization are not implemented as user-facing flows yet.
+The database models cover users, life domains, metric definitions, recorded facts, goals, dashboard layouts, external connections, and sync runs. Each goal/KPI references one life domain and stores its progress direction. The current KPI routes use a demo user; authentication and external data synchronization are not implemented as user-facing flows yet.
 
 ## Known Limitations
 

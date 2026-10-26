@@ -9,7 +9,16 @@ function openModal(id){
   const k = id ? kpis.find(x => x.id === id) : null;
   modalTitle.textContent = k ? 'Edit KPI' : 'Add KPI';
   document.getElementById('fName').value = k ? k.name : '';
-  document.getElementById('fValue').value = k ? k.value : '';
+  const domainSelect = document.getElementById('fDomain');
+  domainSelect.replaceChildren(...domains.map(domain => {
+    const option = document.createElement('option');
+    option.value = domain.id;
+    option.textContent = domain.name;
+    return option;
+  }));
+  domainSelect.value = k ? k.domain_id : '';
+  document.getElementById('fDirection').value = k ? k.direction : 'at_least';
+  document.getElementById('fValue').value = k && k.has_value ? k.value : '';
   document.getElementById('fTarget').value = k ? k.target : '';
   document.getElementById('fUnit').value = k ? (k.unit || '') : '';
   deleteBtn.style.display = k ? 'inline-block' : 'none';
@@ -32,11 +41,14 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   // Read and normalize form values before sending the request.
   const name = document.getElementById('fName').value.trim();
-  const value = parseFloat(document.getElementById('fValue').value);
+  const domain_id = document.getElementById('fDomain').value;
+  const direction = document.getElementById('fDirection').value;
+  const rawValue = document.getElementById('fValue').value.trim();
+  const value = rawValue === '' ? null : parseFloat(rawValue);
   const target = parseFloat(document.getElementById('fTarget').value);
   const unit = document.getElementById('fUnit').value.trim();
 
-  if (!name || isNaN(value) || isNaN(target)) return;
+  if (!name || !domain_id || (value !== null && !Number.isFinite(value)) || !Number.isFinite(target)) return;
 
   const saveBtn = form.querySelector('.btn-primary');
   saveBtn.disabled = true;
@@ -46,11 +58,13 @@ form.addEventListener('submit', async (e) => {
     if (editingId){
       // NB: `value` is not sent — it's server-derived from ingested facts,
       // never edited directly from the dashboard config UI.
-      await api.update(editingId, { name, target, unit });
+      await api.update(editingId, { name, target, domain_id, direction, unit });
     } else {
       // Keep the UI's four-card limit in sync with the available dashboard slots.
       if (kpis.length >= MAX_KPIS) return;
-      await api.create({ name, target, unit, value });
+      const payload = { name, target, domain_id, direction, unit };
+      if (value !== null) payload.value = value;
+      await api.create(payload);
     }
     closeModal();
     await loadKpis();

@@ -258,7 +258,8 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
-  .field input{
+  .field input,
+  .field select{
     width: 100%;
     background: #0A0E17;
     border: 1px solid var(--border);
@@ -269,7 +270,14 @@
     outline: none;
     transition: border-color 0.15s ease;
   }
-  .field input:focus{ border-color: var(--blue-1); }
+  .field input:focus,
+  .field select:focus{ border-color: var(--blue-1); }
+
+  .kpi-domain{
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
 
   .field-row{ display:flex; gap: 10px; }
   .field-row .field{ flex:1; }

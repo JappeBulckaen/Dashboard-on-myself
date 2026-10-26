@@ -1,10 +1,13 @@
 function pct(k){
   // Clamp progress so the ring stays between empty and fully complete.
-  if (!k.target) return 0;
+  if (!k.target || !k.has_value) return 0;
+  if (k.direction === 'at_most') {
+    return k.value <= 0 ? 1 : Math.max(0, Math.min(1, k.target / k.value));
+  }
   return Math.max(0, Math.min(1, k.value / k.target));
 }
 
-function ringMarkup(progress, accent){
+function ringMarkup(progress, accent, hasValue){
   // Convert the desired progress into the SVG circle's dash offset.
   const r = 26, c = 2 * Math.PI * r;
   const offset = c * (1 - progress);
@@ -17,7 +20,7 @@ function ringMarkup(progress, accent){
           stroke-dasharray="${c}"
           stroke-dashoffset="${offset}"></circle>
       </svg>
-      <div class="ring-pct">${Math.round(progress * 100)}%</div>
+      <div class="ring-pct">${hasValue ? `${Math.round(progress * 100)}%` : '—'}</div>
     </div>`;
 }
 
@@ -68,6 +71,7 @@ async function loadKpis(){
   renderSkeleton();
   setStatus(API_BASE ? '' : 'Using mock data — set API_BASE to connect your FastAPI backend.');
   try {
+    domains = await api.listDomains();
     kpis = await api.list();
     render();
   } catch (err){
@@ -92,14 +96,17 @@ function render(){
       card.className = 'kpi-card';
       card.innerHTML = `
         <div class="kpi-top">
-          <span class="kpi-name">${escapeHtml(k.name)}</span>
+          <div>
+            <span class="kpi-name">${escapeHtml(k.name)}</span>
+            <div class="kpi-domain">${escapeHtml(k.domain_name)}</div>
+          </div>
           <button class="kpi-menu-btn" aria-label="Edit ${escapeHtml(k.name)}" data-id="${k.id}">&#8942;</button>
         </div>
         <div class="kpi-body">
-          ${ringMarkup(progress, accent)}
+          ${ringMarkup(progress, accent, k.has_value)}
           <div>
-            <div class="kpi-value">${formatNum(k.value)}<span class="kpi-unit">${escapeHtml(k.unit||'')}</span></div>
-            <div class="kpi-target">of ${formatNum(k.target)}${escapeHtml(k.unit||'')} target</div>
+            <div class="kpi-value">${k.has_value ? formatNum(k.value) : '—'}${k.has_value ? `<span class="kpi-unit">${escapeHtml(k.unit||'')}</span>` : ''}</div>
+            <div class="kpi-target">${k.direction === 'at_most' ? 'at most ' : 'of '}${formatNum(k.target)}${escapeHtml(k.unit||'')}${k.direction === 'at_most' ? '' : ' target'}</div>
           </div>
         </div>
       `;
