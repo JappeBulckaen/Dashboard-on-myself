@@ -24,7 +24,7 @@ The first version is planned as an installable Progressive Web App (PWA), keepin
 - A domain score is the equal-weight average of the available KPI percentages. Numeric KPIs without a recorded value are excluded; if no KPI has a score, show no score.
 - Compare the last completed calendar month with the preceding completed month for MoM, and with the matching month one year earlier for YoY. Show the difference in percentage points (for example, 53% to 65% is +12 pp).
 
-The initial implementation slice adds life domains, requires a domain and progress direction when creating a numeric KPI, and preserves existing KPI CRUD. Existing KPIs are migrated to Other so they can be reassigned instead of being classified by guesswork. Habit schedules/check-ins, domain score aggregation, editable domain names/order, and the overview rings remain subsequent work.
+The initial implementation slice adds life domains, requires a domain and progress direction when creating a numeric KPI, and preserves existing KPI CRUD. Existing KPIs are migrated to Other so they can be reassigned instead of being classified by guesswork. The domain API supports renaming and reordering domains and returns numeric KPI scores for the last completed month with MoM/YoY trends. Habit schedules/check-ins and the overview rings remain subsequent work.
 
 ### Pivot Plan
 
@@ -119,12 +119,17 @@ The VS Code task **Run Backend Tests** runs the suite with the project's virtual
 | --- | --- | --- |
 | `GET` | `/health` | Check that the API is running. |
 | `GET` | `/api/domains` | List the demo user's life domains in display order. |
+| `PATCH` | `/api/domains/{domain_id}` | Rename a life domain. |
+| `PUT` | `/api/domains/order` | Set the complete life-domain order using domain IDs. |
+| `GET` | `/api/domains/{domain_id}/summary` | Return the domain's last-completed-month score, MoM/YoY changes, and KPIs. |
 | `GET` | `/api/kpis` | List KPIs for the demo user. |
 | `POST` | `/api/kpis` | Create a KPI. |
 | `PUT` | `/api/kpis/{kpi_id}` | Update a KPI's name, target, domain, direction, or unit. |
 | `DELETE` | `/api/kpis/{kpi_id}` | Delete a KPI. |
 
 A KPI response contains `id`, `metric_type`, `name`, `domain_id`, `domain_name`, `direction`, `value`, `has_value`, `target`, and `unit`. `has_value` distinguishes an actual zero reading from a KPI with no recorded value yet. The create request requires `name`, `target`, and `domain_id`; `direction` defaults to `at_least` and may be `at_most`. `unit`, `value`, and `metric_type` are optional.
+
+The domain summary selects the latest fact for each KPI within each completed UTC calendar month. It averages scored KPIs equally, excludes KPIs with no fact in that month, and reports the score change in percentage points. Numeric progress is capped at 100%; a zero value for an `at_most` KPI scores 100%. The summary currently covers numeric KPIs only; habit check-ins are not implemented yet.
 
 ## Data Model
 
