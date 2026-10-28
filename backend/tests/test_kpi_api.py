@@ -5,7 +5,22 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Fact, Goal
+from app.main import scheduled_checkin_dates
+from app.models import CheckIn, Fact, Goal
+
+
+def test_local_frontend_origin_is_allowed_for_api_requests(client: TestClient) -> None:
+    response = client.options(
+        "/api/domains",
+        headers={
+            "Origin": "http://127.0.0.1:5500",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5500"
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def create_payload(api_client: TestClient) -> dict:
@@ -148,6 +163,126 @@ def test_create_kpi_without_initial_value_marks_value_missing(api_client: TestCl
     assert response.status_code == 200
     assert response.json()["value"] == 0
     assert response.json()["has_value"] is False
+    assert response.json()["tracking_mode"] == "numeric"
+
+
+def test_create_checkin_kpi_requires_a_valid_recurrence(api_client: TestClient) -> None:
+    payload = create_payload(api_client)
+    payload.update(tracking_mode="checkin", checkin_cadence="biweekly")
+
+    missing_schedule = api_client.post("/api/kpis", json=payload)
+
+    payload.update(
+        schedule_start_date=date.today().isoformat(),
+        schedule_weekdays=[1, 1],
+    )
+    duplicate_weekdays = api_client.post("/api/kpis", json=payload)
+
+    assert missing_schedule.status_code == 422
+    assert duplicate_weekdays.status_code == 422
+
+
+def test_record_checkin_and_allow_correction(api_client: TestClient) -> None:
+    payload = create_payload(api_client)
+    payload.update(
+        tracking_mode="checkin",
+        checkin_cadence="daily",
+        schedule_start_date=date.today().isoformat(),
+    )
+    created = api_client.post("/api/kpis", json=payload)
+    assert created.status_code == 200
+
+    checkin_url = f"/api/kpis/{created.json()['id']}/checkins"
+    first_answer = api_client.post(
+        checkin_url, json={"date": date.today().isoformat(), "met": True}
+    )
+    correction = api_client.post(
+        checkin_url, json={"date": date.today().isoformat(), "met": False}
+    )
+
+    assert first_answer.status_code == 200
+    assert first_answer.json()["met"] is True
+    assert correction.status_code == 200
+    assert correction.json()["met"] is False
+    assert api_client.get("/api/kpis").json()[0]["latest_checkin_met"] is False
+
+
+def test_checkin_rejects_future_dates_and_numeric_kpis(api_client: TestClient) -> None:
+    checkin_payload = create_payload(api_client)
+    checkin_payload.update(
+        tracking_mode="checkin",
+        checkin_cadence="daily",
+        schedule_start_date=date.today().isoformat(),
+    )
+    checkin = api_client.post("/api/kpis", json=checkin_payload).json()
+    numeric = api_client.post("/api/kpis", json=create_payload(api_client)).json()
+    future = date.today() + timedelta(days=1)
+
+    future_response = api_client.post(
+        f"/api/kpis/{checkin['id']}/checkins",
+        json={"date": future.isoformat(), "met": True},
+    )
+    numeric_response = api_client.post(
+        f"/api/kpis/{numeric['id']}/checkins",
+        json={"date": date.today().isoformat(), "met": True},
+    )
+
+    assert future_response.status_code == 422
+    assert numeric_response.status_code == 409
+
+
+def test_weekday_and_biweekly_schedules_generate_expected_dates(
+    api_client: TestClient, db_session: Session
+) -> None:
+    domain_id = create_payload(api_client)["domain_id"]
+    start = date(2026, 10, 5)
+    weekdays = api_client.post(
+        "/api/kpis",
+        json={
+            "name": "Weekdays",
+            "target": 1,
+            "domain_id": domain_id,
+            "tracking_mode": "checkin",
+            "checkin_cadence": "weekdays",
+            "schedule_start_date": start.isoformat(),
+        },
+    ).json()
+    biweekly = api_client.post(
+        "/api/kpis",
+        json={
+            "name": "Every other Monday",
+            "target": 1,
+            "domain_id": domain_id,
+            "tracking_mode": "checkin",
+            "checkin_cadence": "biweekly",
+            "schedule_weekdays": [0],
+            "schedule_start_date": start.isoformat(),
+        },
+    ).json()
+    weekdays_goal = db_session.get(Goal, UUID(weekdays["id"]))
+    biweekly_goal = db_session.get(Goal, UUID(biweekly["id"]))
+    assert weekdays_goal is not None
+    assert biweekly_goal is not None
+
+    assert weekdays["checkin_cadence"] == "weekdays"
+    assert biweekly["schedule_weekdays"] == [0]
+    assert scheduled_checkin_dates(
+        weekdays_goal, date(2026, 10, 5), date(2026, 10, 17)
+    ) == [
+        date(2026, 10, 5),
+        date(2026, 10, 6),
+        date(2026, 10, 7),
+        date(2026, 10, 8),
+        date(2026, 10, 9),
+        date(2026, 10, 12),
+        date(2026, 10, 13),
+        date(2026, 10, 14),
+        date(2026, 10, 15),
+        date(2026, 10, 16),
+    ]
+    assert scheduled_checkin_dates(
+        biweekly_goal, date(2026, 10, 5), date(2026, 10, 26)
+    ) == [date(2026, 10, 5), date(2026, 10, 19)]
 
 
 def test_create_kpis_without_explicit_metric_type_get_distinct_metrics(api_client: TestClient) -> None:
@@ -314,6 +449,54 @@ def test_domain_summary_excludes_missing_values_and_scores_zero_for_at_most(
     missing_kpi = next(kpi for kpi in summary["kpis"] if kpi["id"] == missing["id"])
     assert missing_kpi["has_value"] is False
     assert missing_kpi["period_score_percent"] is None
+
+
+def test_domain_summary_counts_unanswered_checkins_as_no(
+    api_client: TestClient, db_session: Session
+) -> None:
+    payload = create_payload(api_client)
+    last_month_start = date.today().replace(day=1)
+    month_index = last_month_start.year * 12 + last_month_start.month - 2
+    last_month_start = date(month_index // 12, month_index % 12 + 1, 1)
+    payload.update(
+        name="Daily hydration",
+        target=8,
+        unit="glasses",
+        tracking_mode="checkin",
+        checkin_cadence="daily",
+        schedule_start_date=(last_month_start - timedelta(days=40)).isoformat(),
+    )
+    created = api_client.post("/api/kpis", json=payload)
+    assert created.status_code == 200
+    goal = db_session.get(Goal, UUID(created.json()["id"]))
+    assert goal is not None
+
+    checkin_dates = [
+        last_month_start + timedelta(days=1),
+        last_month_start + timedelta(days=2),
+        last_month_start + timedelta(days=3),
+    ]
+    db_session.add_all(
+        CheckIn(
+            goal_id=goal.id,
+            user_id=goal.user_id,
+            checkin_date=checkin_date,
+            met=index < 2,
+        )
+        for index, checkin_date in enumerate(checkin_dates)
+    )
+    db_session.flush()
+
+    response = api_client.get(f"/api/domains/{goal.domain_id}/summary")
+
+    assert response.status_code == 200
+    summary = response.json()
+    expected_days = (date.today().replace(day=1) - last_month_start).days
+    assert summary["score_percent"] == 2 / expected_days * 100
+    hydration = summary["kpis"][0]
+    assert hydration["period_score_percent"] == 2 / expected_days * 100
+    assert len(hydration["checkin_history"]) == 35
+    assert all(day["scheduled"] for day in hydration["checkin_history"])
 
 
 def test_delete_removes_kpi_from_list(api_client: TestClient) -> None:

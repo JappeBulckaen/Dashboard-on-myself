@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <script defer src="js/api.js"></script>     <!-- constants, fetch layer, mock backend -->
 <script defer src="js/state.js"></script>   <!-- kpis[], editingId -->
-<script defer src="js/render.js"></script>  <!-- grid/ring rendering, loadKpis() -->
+<script defer src="js/render.js"></script>  <!-- domain/KPI views and loadKpis() -->
 <script defer src="js/modal.js"></script>   <!-- modal open/close, form submit/delete -->
 <script defer src="js/main.js"></script>    <!-- setGreeting() + loadKpis() kickoff -->
 </head>
@@ -25,9 +25,37 @@
   <div class="greeting" id="greeting">Good afternoon</div>
   <div class="greeting-sub">Here's where things stand today.</div>
 
-  <div class="section-label">Your KPIs</div>
   <div id="statusBanner" class="status-banner" style="display:none;"></div>
-  <div class="kpi-grid" id="kpiGrid"></div>
+  <section id="overviewView">
+    <div class="section-heading">
+      <div>
+        <div class="section-label">Your life</div>
+        <h1 class="page-title">Life domains</h1>
+      </div>
+      <span class="period-label" id="overviewPeriod"></span>
+    </div>
+    <div class="domain-grid" id="domainGrid"></div>
+  </section>
+
+  <section id="domainDetailView" hidden>
+    <button class="back-button" id="backToOverview" type="button">← All domains</button>
+    <div class="detail-heading">
+      <div>
+        <div class="section-label">Life domain</div>
+        <h1 class="page-title" id="detailTitle"></h1>
+        <p class="detail-period" id="detailPeriod"></p>
+      </div>
+      <div class="detail-score" id="detailScore"></div>
+    </div>
+    <div class="section-heading detail-kpi-heading">
+      <div>
+        <div class="section-label">Domain details</div>
+        <h2 class="section-title">Your KPIs</h2>
+      </div>
+      <button class="btn btn-primary" id="addKpiBtn" type="button">Add KPI</button>
+    </div>
+    <div class="kpi-grid" id="kpiGrid"></div>
+  </section>
 </div>
 
 <div class="overlay" id="overlay">
@@ -43,6 +71,37 @@
         <select id="fDomain" required></select>
       </div>
       <div class="field">
+        <label for="fTrackingMode">Tracking style</label>
+        <select id="fTrackingMode" required>
+          <option value="numeric">Numeric value</option>
+          <option value="checkin">Yes / No check-in</option>
+        </select>
+      </div>
+      <div class="field" id="cadenceField" hidden>
+        <label for="fCadence">Check-in schedule</label>
+        <select id="fCadence">
+          <option value="daily">Every day</option>
+          <option value="weekdays">Weekdays (Monday–Friday)</option>
+          <option value="biweekly">Every two weeks</option>
+        </select>
+      </div>
+      <fieldset class="field weekday-field" id="weekdayField" hidden>
+        <legend>Check-in weekday(s)</legend>
+        <div class="weekday-options">
+          <label><input type="checkbox" name="fWeekday" value="0"> Mon</label>
+          <label><input type="checkbox" name="fWeekday" value="1"> Tue</label>
+          <label><input type="checkbox" name="fWeekday" value="2"> Wed</label>
+          <label><input type="checkbox" name="fWeekday" value="3"> Thu</label>
+          <label><input type="checkbox" name="fWeekday" value="4"> Fri</label>
+          <label><input type="checkbox" name="fWeekday" value="5"> Sat</label>
+          <label><input type="checkbox" name="fWeekday" value="6"> Sun</label>
+        </div>
+      </fieldset>
+      <div class="field" id="scheduleStartField" hidden>
+        <label for="fScheduleStart">Schedule starts on</label>
+        <input id="fScheduleStart" type="date">
+      </div>
+      <div class="field" id="directionField">
         <label for="fDirection">Progress direction</label>
         <select id="fDirection" required>
           <option value="at_least">Higher is better</option>
@@ -50,7 +109,7 @@
         </select>
       </div>
       <div class="field-row">
-        <div class="field">
+        <div class="field" id="currentValueField">
           <label for="fValue">Current value</label>
           <input id="fValue" type="number" step="any" placeholder="Leave blank if not recorded">
         </div>
@@ -63,7 +122,7 @@
         <label for="fUnit">Unit (optional)</label>
         <input id="fUnit" type="text" maxlength="10" placeholder="e.g. km, kg, %">
       </div>
-      <div class="hint">Progress ring fills based on current value vs. target.</div>
+      <div class="hint" id="trackingHint">Progress ring fills based on current value vs. target.</div>
       <div class="modal-footer-row">
         <button type="button" class="btn-delete" id="deleteBtn" style="display:none;">Remove KPI</button>
         <span></span>

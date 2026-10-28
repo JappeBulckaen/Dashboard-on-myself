@@ -38,7 +38,8 @@ These fixes are intentionally captured in the runtime code and test bootstrap so
 - Invalid UUID path parameters return `422`.
 - KPI listing, creation with and without an initial fact, and response serialization.
 - Default life-domain listing, renaming, complete reordering, required KPI domain assignment, domain reassignment, and progress direction.
-- Domain summary month boundaries, latest monthly facts, equal-weight scores, MoM/YoY percentage-point trends, lower-is-better zero handling, and missing-value exclusion.
+- Domain summary month boundaries, latest monthly facts, equal-weight numeric/check-in scores, MoM/YoY percentage-point trends, lower-is-better zero handling, and missing-value exclusion.
+- Daily, weekday, and anchored biweekly schedule generation; required schedule validation; check-in recording/correction; and counting unanswered expected days as No.
 - Missing initial values remain distinguishable from recorded zero values.
 - KPI updates change only supplied fields and report missing records as `404`.
 - KPI deletion removes the goal from the API list and reports missing records as `404`.

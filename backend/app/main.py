@@ -1,17 +1,25 @@
 import re
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Optional
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Fact, Goal, LifeDomain, MetricCatalog, User
+from app.models import CheckIn, Fact, Goal, LifeDomain, MetricCatalog, User
 
 app = FastAPI(title="Dashboard on Myself API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 DEFAULT_DOMAINS = (
     ("health_fitness", "Health & Fitness", 0),
@@ -33,6 +41,22 @@ class KpiCreate(BaseModel):
     unit: Optional[str] = Field(default=None, max_length=20)
     value: Optional[float] = Field(default=None, ge=0)
     metric_type: Optional[str] = None
+    tracking_mode: Literal["numeric", "checkin"] = "numeric"
+    checkin_cadence: Optional[Literal["daily", "weekdays", "biweekly"]] = None
+    schedule_weekdays: Optional[list[int]] = None
+    schedule_start_date: Optional[date] = None
+
+    @model_validator(mode="after")
+    def validate_tracking_schedule(self):
+        validate_schedule(
+            self.tracking_mode,
+            self.checkin_cadence,
+            self.schedule_weekdays,
+            self.schedule_start_date,
+        )
+        if self.tracking_mode == "checkin" and self.value is not None:
+            raise ValueError("Check-in KPIs cannot have an initial numeric value")
+        return self
 
 
 class KpiUpdate(BaseModel):
@@ -43,6 +67,9 @@ class KpiUpdate(BaseModel):
     domain_id: Optional[UUID] = None
     direction: Optional[Literal["at_least", "at_most"]] = None
     unit: Optional[str] = Field(default=None, max_length=20)
+    checkin_cadence: Optional[Literal["daily", "weekdays", "biweekly"]] = None
+    schedule_weekdays: Optional[list[int]] = None
+    schedule_start_date: Optional[date] = None
 
 
 class KpiRead(BaseModel):
@@ -58,6 +85,12 @@ class KpiRead(BaseModel):
     has_value: bool
     target: float
     unit: Optional[str] = None
+    tracking_mode: Literal["numeric", "checkin"]
+    checkin_cadence: Optional[str] = None
+    schedule_weekdays: list[int]
+    schedule_start_date: Optional[str] = None
+    latest_checkin_on: Optional[str] = None
+    latest_checkin_met: Optional[bool] = None
 
 
 class LifeDomainRead(BaseModel):
@@ -83,8 +116,21 @@ class LifeDomainOrderUpdate(BaseModel):
     domain_ids: list[UUID] = Field(..., min_length=1)
 
 
+class CheckInDayRead(BaseModel):
+    date: str
+    met: Optional[bool]
+    recorded: bool
+    scheduled: bool
+
+
 class DomainKpiSummaryRead(KpiRead):
     period_score_percent: Optional[float] = None
+    checkin_history: list[CheckInDayRead] = Field(default_factory=list)
+
+
+class CheckInCreate(BaseModel):
+    date: date
+    met: bool
 
 
 class LifeDomainSummaryRead(BaseModel):
@@ -133,6 +179,75 @@ def get_user_domain(db: Session, user: User, domain_id: UUID) -> LifeDomain:
     return domain
 
 
+def get_user_goal(db: Session, user: User, kpi_id: UUID) -> Goal:
+    goal = db.execute(
+        select(Goal).where(Goal.id == kpi_id, Goal.user_id == user.id)
+    ).scalar_one_or_none()
+    if goal is None:
+        raise HTTPException(status_code=404, detail="KPI not found")
+    return goal
+
+
+def validate_schedule(
+    tracking_mode: str,
+    cadence: Optional[str],
+    weekdays: Optional[list[int]],
+    start_date: Optional[date],
+) -> None:
+    if tracking_mode == "numeric":
+        if cadence is not None or weekdays is not None or start_date is not None:
+            raise ValueError("Numeric KPIs cannot have a check-in schedule")
+        return
+    if cadence not in {"daily", "weekdays", "biweekly"}:
+        raise ValueError("Check-in KPIs require a supported cadence")
+    if weekdays is not None and (
+        not weekdays
+        or any(day < 0 or day > 6 for day in weekdays)
+        or len(set(weekdays)) != len(weekdays)
+    ):
+        raise ValueError("schedule_weekdays must contain unique weekday values from 0 to 6")
+    if cadence == "biweekly" and not weekdays:
+        raise ValueError("Biweekly schedules require at least one selected weekday")
+    if cadence != "biweekly" and weekdays is not None:
+        raise ValueError("Selected weekdays are only valid for biweekly schedules")
+    if start_date is None:
+        raise ValueError("Check-in schedules require a start date")
+
+
+def scheduled_checkin_dates(goal: Goal, start: date, end: date) -> list[date]:
+    if goal.tracking_mode != "checkin" or goal.schedule_start_date is None:
+        return []
+    first_day = max(start, goal.schedule_start_date)
+    scheduled: list[date] = []
+    current = first_day
+    while current < end:
+        if goal.checkin_cadence == "daily":
+            scheduled.append(current)
+        elif goal.checkin_cadence == "weekdays" and current.weekday() < 5:
+            scheduled.append(current)
+        elif goal.checkin_cadence == "biweekly":
+            week_number = (current - goal.schedule_start_date).days // 7
+            if (
+                week_number % 2 == 0
+                and current.weekday() in (goal.schedule_weekdays or [])
+            ):
+                scheduled.append(current)
+        current += timedelta(days=1)
+    return scheduled
+
+
+def score_checkins(goal: Goal, checkins: dict[date, CheckIn], start: date, end: date) -> Optional[float]:
+    expected_dates = scheduled_checkin_dates(goal, start, end)
+    if not expected_dates:
+        return None
+    yes_count = sum(
+        1
+        for expected_date in expected_dates
+        if (checkin := checkins.get(expected_date)) is not None and checkin.met
+    )
+    return yes_count / len(expected_dates) * 100
+
+
 def shift_month(month_start: date, offset: int) -> date:
     month_index = month_start.year * 12 + month_start.month - 1 + offset
     return date(month_index // 12, month_index % 12 + 1, 1)
@@ -177,6 +292,14 @@ def serialize_goal(db: Session, goal: Goal) -> dict[str, Any]:
         .scalar_one_or_none()
     )
     domain = db.get(LifeDomain, goal.domain_id)
+    latest_checkin = None
+    if goal.tracking_mode == "checkin":
+        latest_checkin = db.execute(
+            select(CheckIn)
+            .where(CheckIn.goal_id == goal.id, CheckIn.user_id == goal.user_id)
+            .order_by(CheckIn.checkin_date.desc())
+            .limit(1)
+        ).scalar_one_or_none()
     value = float(fact.value) if fact is not None else 0.0
     unit = metric.default_unit if metric and metric.default_unit else (fact.unit if fact is not None else None)
     return {
@@ -190,6 +313,20 @@ def serialize_goal(db: Session, goal: Goal) -> dict[str, Any]:
         "has_value": fact is not None,
         "target": float(goal.target_value),
         "unit": unit,
+        "tracking_mode": goal.tracking_mode,
+        "checkin_cadence": goal.checkin_cadence,
+        "schedule_weekdays": goal.schedule_weekdays or [],
+        "schedule_start_date": (
+            goal.schedule_start_date.isoformat()
+            if goal.schedule_start_date is not None
+            else None
+        ),
+        "latest_checkin_on": (
+            latest_checkin.checkin_date.isoformat()
+            if latest_checkin is not None
+            else None
+        ),
+        "latest_checkin_met": latest_checkin.met if latest_checkin is not None else None,
     }
 
 
@@ -297,6 +434,7 @@ def get_domain_summary(domain_id: UUID, db: Session = Depends(get_db)):
     metric_types = {goal.metric_type for goal in goals}
     facts: list[Fact] = []
     metrics: dict[str, MetricCatalog] = {}
+    checkins_by_goal: dict[UUID, dict[date, CheckIn]] = {}
     if metric_types:
         metrics = {
             metric.metric_type: metric
@@ -318,6 +456,22 @@ def get_domain_summary(domain_id: UUID, db: Session = Depends(get_db)):
             )
             .order_by(Fact.observed_at)
         ).scalars().all()
+        checkin_goals = [goal for goal in goals if goal.tracking_mode == "checkin"]
+        if checkin_goals:
+            checkin_goal_ids = [goal.id for goal in checkin_goals]
+            checkins = db.execute(
+                select(CheckIn)
+                .where(
+                    CheckIn.user_id == user.id,
+                    CheckIn.goal_id.in_(checkin_goal_ids),
+                    CheckIn.checkin_date >= year_ago_month_start,
+                    CheckIn.checkin_date <= datetime.now(timezone.utc).date(),
+                )
+                .order_by(CheckIn.checkin_date)
+            ).scalars().all()
+            checkins_by_goal = {goal.id: {} for goal in checkin_goals}
+            for checkin in checkins:
+                checkins_by_goal[checkin.goal_id][checkin.checkin_date] = checkin
 
     last_month_values = monthly_values(
         facts, last_month_start, current_month_start
@@ -329,24 +483,99 @@ def get_domain_summary(domain_id: UUID, db: Session = Depends(get_db)):
         facts, year_ago_month_start, shift_month(year_ago_month_start, 1)
     )
 
-    def domain_score(values: dict[str, Fact]) -> Optional[float]:
-        scores = [
-            progress_percent(
-                float(fact.value), float(goal.target_value), goal.direction
+    def score_for_goal(
+        goal: Goal,
+        values: dict[str, Fact],
+        period_checkins: dict[UUID, dict[date, CheckIn]],
+        period_start: date,
+        period_end: date,
+    ) -> Optional[float]:
+        if goal.tracking_mode == "checkin":
+            return score_checkins(
+                goal,
+                period_checkins.get(goal.id, {}),
+                period_start,
+                period_end,
             )
+        fact = values.get(goal.metric_type)
+        if fact is None:
+            return None
+        return progress_percent(
+            float(fact.value), float(goal.target_value), goal.direction
+        )
+
+    def domain_score(
+        values: dict[str, Fact],
+        period_checkins: dict[UUID, dict[date, CheckIn]],
+        period_start: date,
+        period_end: date,
+    ) -> Optional[float]:
+        scores = [
+            score
             for goal in goals
-            if (fact := values.get(goal.metric_type)) is not None
+            if (
+                score := score_for_goal(
+                    goal, values, period_checkins, period_start, period_end
+                )
+            ) is not None
         ]
         return sum(scores) / len(scores) if scores else None
 
-    score = domain_score(last_month_values)
-    previous_score = domain_score(previous_month_values)
-    year_ago_score = domain_score(year_ago_values)
+    score = domain_score(
+        last_month_values,
+        checkins_by_goal,
+        last_month_start,
+        current_month_start,
+    )
+    previous_score = domain_score(
+        previous_month_values,
+        checkins_by_goal,
+        previous_month_start,
+        last_month_start,
+    )
+    year_ago_score = domain_score(
+        year_ago_values,
+        checkins_by_goal,
+        year_ago_month_start,
+        shift_month(year_ago_month_start, 1),
+    )
 
     kpis = []
     for goal in goals:
         metric = metrics.get(goal.metric_type)
         fact = last_month_values.get(goal.metric_type)
+        goal_checkins = checkins_by_goal.get(goal.id, {})
+        latest_checkin = max(goal_checkins.values(), key=lambda item: item.checkin_date, default=None)
+        period_score = score_for_goal(
+            goal,
+            last_month_values,
+            checkins_by_goal,
+            last_month_start,
+            current_month_start,
+        )
+        checkin_history: list[dict[str, Any]] = []
+        if goal.tracking_mode == "checkin":
+            history_start = datetime.now(timezone.utc).date() - timedelta(days=34)
+            history_end = datetime.now(timezone.utc).date() + timedelta(days=1)
+            scheduled_dates = set(
+                scheduled_checkin_dates(goal, history_start, history_end)
+            )
+            checkin_history = [
+                {
+                    "date": history_date.isoformat(),
+                    "met": (
+                        goal_checkins[history_date].met
+                        if history_date in goal_checkins
+                        else None
+                    ),
+                    "recorded": history_date in goal_checkins,
+                    "scheduled": history_date in scheduled_dates,
+                }
+                for history_date in (
+                    history_start + timedelta(days=offset)
+                    for offset in range((history_end - history_start).days)
+                )
+            ]
         kpis.append(
             {
                 "id": str(goal.id),
@@ -361,13 +590,24 @@ def get_domain_summary(domain_id: UUID, db: Session = Depends(get_db)):
                 "unit": metric.default_unit
                 if metric and metric.default_unit
                 else (fact.unit if fact is not None else None),
-                "period_score_percent": (
-                    progress_percent(
-                        float(fact.value), float(goal.target_value), goal.direction
-                    )
-                    if fact is not None
+                "tracking_mode": goal.tracking_mode,
+                "checkin_cadence": goal.checkin_cadence,
+                "schedule_weekdays": goal.schedule_weekdays or [],
+                "schedule_start_date": (
+                    goal.schedule_start_date.isoformat()
+                    if goal.schedule_start_date is not None
                     else None
                 ),
+                "latest_checkin_on": (
+                    latest_checkin.checkin_date.isoformat()
+                    if latest_checkin is not None
+                    else None
+                ),
+                "latest_checkin_met": (
+                    latest_checkin.met if latest_checkin is not None else None
+                ),
+                "period_score_percent": period_score,
+                "checkin_history": checkin_history,
             }
         )
 
@@ -439,6 +679,14 @@ def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
         domain_id=payload.domain_id,
         target_value=payload.target,
         direction=payload.direction,
+        tracking_mode=payload.tracking_mode,
+        checkin_cadence=payload.checkin_cadence,
+        schedule_weekdays=payload.schedule_weekdays,
+        schedule_start_date=(
+            payload.schedule_start_date
+            if payload.tracking_mode == "checkin"
+            else None
+        ),
         period="all_time",
     )
     db.add(goal)
@@ -465,11 +713,30 @@ def create_kpi(payload: KpiCreate, db: Session = Depends(get_db)):
 def update_kpi(kpi_id: UUID, payload: KpiUpdate, db: Session = Depends(get_db)):
     """Update the selected goal or its metric display metadata."""
     user = get_demo_user(db)
-    goal = db.execute(
-        select(Goal).where(Goal.id == kpi_id, Goal.user_id == user.id)
-    ).scalar_one_or_none()
-    if goal is None:
-        raise HTTPException(status_code=404, detail="KPI not found")
+    goal = get_user_goal(db, user, kpi_id)
+
+    updated_fields = payload.model_fields_set
+    try:
+        validate_schedule(
+            goal.tracking_mode,
+            (
+                payload.checkin_cadence
+                if "checkin_cadence" in updated_fields
+                else goal.checkin_cadence
+            ),
+            (
+                payload.schedule_weekdays
+                if "schedule_weekdays" in updated_fields
+                else goal.schedule_weekdays
+            ),
+            (
+                payload.schedule_start_date
+                if "schedule_start_date" in updated_fields
+                else goal.schedule_start_date
+            ),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
     if payload.domain_id is not None:
         get_user_domain(db, user, payload.domain_id)
@@ -491,19 +758,69 @@ def update_kpi(kpi_id: UUID, payload: KpiUpdate, db: Session = Depends(get_db)):
         if metric is not None:
             metric.default_unit = payload.unit
 
+    if "checkin_cadence" in updated_fields:
+        goal.checkin_cadence = payload.checkin_cadence
+    if "schedule_weekdays" in updated_fields:
+        goal.schedule_weekdays = payload.schedule_weekdays
+    if "schedule_start_date" in updated_fields:
+        goal.schedule_start_date = payload.schedule_start_date
+
     db.commit()
     return serialize_goal(db, goal)
+
+
+@app.post("/api/kpis/{kpi_id}/checkins", response_model=CheckInDayRead)
+def set_kpi_checkin(
+    kpi_id: UUID, payload: CheckInCreate, db: Session = Depends(get_db)
+):
+    """Record or correct a yes/no answer for a scheduled check-in date."""
+    user = get_demo_user(db)
+    goal = get_user_goal(db, user, kpi_id)
+    if goal.tracking_mode != "checkin":
+        raise HTTPException(status_code=409, detail="This KPI does not use check-ins")
+    today = datetime.now(timezone.utc).date()
+    if payload.date > today:
+        raise HTTPException(status_code=422, detail="Check-ins cannot be recorded in the future")
+    if payload.date not in scheduled_checkin_dates(
+        goal, payload.date, payload.date + timedelta(days=1)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="This date is not scheduled for a check-in",
+        )
+
+    checkin = db.execute(
+        select(CheckIn).where(
+            CheckIn.goal_id == goal.id,
+            CheckIn.user_id == user.id,
+            CheckIn.checkin_date == payload.date,
+        )
+    ).scalar_one_or_none()
+    if checkin is None:
+        checkin = CheckIn(
+            goal_id=goal.id,
+            user_id=user.id,
+            checkin_date=payload.date,
+            met=payload.met,
+        )
+        db.add(checkin)
+    else:
+        checkin.met = payload.met
+
+    db.commit()
+    return {
+        "date": checkin.checkin_date.isoformat(),
+        "met": checkin.met,
+        "recorded": True,
+        "scheduled": True,
+    }
 
 
 @app.delete("/api/kpis/{kpi_id}")
 def delete_kpi(kpi_id: UUID, db: Session = Depends(get_db)):
     """Delete a goal belonging to the shared demo user's dashboard."""
     user = get_demo_user(db)
-    goal = db.execute(
-        select(Goal).where(Goal.id == kpi_id, Goal.user_id == user.id)
-    ).scalar_one_or_none()
-    if goal is None:
-        raise HTTPException(status_code=404, detail="KPI not found")
+    goal = get_user_goal(db, user, kpi_id)
     db.delete(goal)
     db.commit()
     return {"status": "deleted"}

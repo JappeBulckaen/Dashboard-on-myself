@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -101,11 +101,41 @@ class Goal(Base):
     domain_id = Column(UUID(as_uuid=True), ForeignKey("life_domains.id", ondelete="RESTRICT"), nullable=False)
     target_value = Column(Numeric(precision=18, scale=6), nullable=False)
     direction = Column(String(20), nullable=False)
+    tracking_mode = Column(String(20), nullable=False, default="numeric")
+    checkin_cadence = Column(String(20), nullable=True)
+    schedule_weekdays = Column(JSON, nullable=True)
+    schedule_start_date = Column(Date, nullable=True)
     period = Column(String(50), nullable=False, default="all_time")
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (UniqueConstraint("user_id", "metric_type", "period", name="uq_goals_user_metric_period"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "metric_type", "period", name="uq_goals_user_metric_period"),
+        UniqueConstraint("id", "user_id", name="uq_goals_id_user_id"),
+    )
+
+
+class CheckIn(Base):
+    """A yes/no answer for one scheduled KPI evaluation date."""
+
+    __tablename__ = "checkins"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    goal_id = Column(UUID(as_uuid=True), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    checkin_date = Column(Date, nullable=False)
+    met = Column(Boolean, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["goal_id", "user_id"],
+            ["goals.id", "goals.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("goal_id", "checkin_date", name="uq_checkins_goal_date"),
+        Index("ix_checkins_user_date", "user_id", "checkin_date"),
+    )
 
 
 class DashboardLayout(Base):

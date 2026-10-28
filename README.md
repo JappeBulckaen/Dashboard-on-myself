@@ -4,11 +4,27 @@ A personal KPI dashboard MVP. The frontend displays KPI values and targets; a Fa
 
 ## Project Status
 
-The frontend and backend foundations are in place. The frontend currently uses its mock API by default, but the local integration path is now wired to the running backend for validation.
+The frontend and backend foundations are in place. The frontend is configured to connect to a local FastAPI backend; an in-memory mock API remains available by clearing `API_BASE` in `js/api.js`.
 
 The backend's health and KPI create, list, update, and delete routes have been verified. The test suite runs against a disposable PostgreSQL schema created per run, so each test session uses a clean, isolated dataset without needing a separate `TEST_DATABASE_URL`.
 
 The PostgreSQL URL normalization bug was also fixed: the app and tests now convert a raw `postgresql://...` URL to `postgresql+psycopg://...` when needed, which avoids the `ModuleNotFoundError: No module named 'psycopg2'` issue during engine creation.
+
+### MVP Readiness
+
+The project is a working technical foundation, but it is not yet a shippable life-domain app MVP. The browser page has a life-domain overview and numeric/check-in KPI detail views, backed by monthly domain summaries. Check-in KPIs now support daily, weekday, and start-date-anchored biweekly schedules, with manual Yes/No answers. Push notifications are not implemented. The current API uses one shared demo account, so it must not be used for private or multi-user data.
+
+The page can be opened in a browser today, but it is not yet installable as a Progressive Web App. A PWA still needs a web app manifest, app icons, HTTPS deployment, and service-worker behavior for caching/offline handling. The frontend also points to a local backend address during development, which is not reachable as-is from another device.
+
+MVP work remaining:
+
+- Refine and validate the mobile-first overview and domain-detail experience on real phone-sized screens.
+- Add secure push reminders after authenticated user flows and deployed HTTPS origins are in place.
+- Add authentication and enforce per-user data isolation before storing real personal data.
+- Prepare PWA installation assets and offline/error states, then deploy the frontend and API on secure, reachable origins.
+- Expand frontend/mobile tests and pilot with sample data; address backups, monitoring, and account recovery before a broader public release.
+
+The backend foundation and API have passed the existing backend regression suite (37 tests as of October 2026). As a planning estimate rather than a commitment, a private, usable MVP is likely to require a few focused weeks of implementation, followed by additional release hardening for a public launch.
 
 ## Planned Product Pivot: Life-Domain Overview
 
@@ -20,11 +36,11 @@ The first version is planned as an installable Progressive Web App (PWA), keepin
 
 - Start with Health & Fitness, Productivity, Finance, Relationships, Household, and Other. Each KPI belongs to exactly one domain.
 - Keep both numeric KPIs and yes/no habits in KPI CRUD. A numeric KPI is scored against its positive target: higher-is-better uses `value / target`; lower-is-better uses `target / value` (a zero value is 100%). Clamp either result to 100%.
-- A habit score is yes check-ins divided by the expected weekdays in the calendar month. Each habit can have its own selected weekdays, and an unanswered expected day counts as no.
+- A check-in KPI score is Yes answers divided by expected scheduled dates in the calendar month. The first supported schedules are daily, weekdays, and selected weekdays on an anchored every-two-weeks cycle. An unanswered past expected date counts as No.
 - A domain score is the equal-weight average of the available KPI percentages. Numeric KPIs without a recorded value are excluded; if no KPI has a score, show no score.
 - Compare the last completed calendar month with the preceding completed month for MoM, and with the matching month one year earlier for YoY. Show the difference in percentage points (for example, 53% to 65% is +12 pp).
 
-The initial implementation slice adds life domains, requires a domain and progress direction when creating a numeric KPI, and preserves existing KPI CRUD. Existing KPIs are migrated to Other so they can be reassigned instead of being classified by guesswork. The domain API supports renaming and reordering domains and returns numeric KPI scores for the last completed month with MoM/YoY trends. Habit schedules/check-ins and the overview rings remain subsequent work.
+The initial implementation slice adds life domains, requires a domain and progress direction when creating a numeric KPI, and preserves existing KPI CRUD. Existing KPIs are migrated to Other so they can be reassigned instead of being classified by guesswork. The domain API supports renaming/reordering domains and returns monthly KPI scores with MoM/YoY trends. The browser overview and domain detail view are implemented; numeric and scheduled Yes/No check-in KPI tracking are supported. Push reminders and longer-term history/reporting remain subsequent work.
 
 ### Pivot Plan
 
@@ -34,9 +50,9 @@ The initial implementation slice adds life domains, requires a domain and progre
 4. Introduce versioned database migrations and migrate existing KPIs into appropriate domains, with a safe fallback for unclassified records.
 5. Keep KPI create, read, update, and delete (CRUD) functionality. Extend KPI creation and updates to accept a domain, and include domain information in KPI responses.
 6. Add API support for listing, renaming, and reordering a user's predefined domains, plus a domain-summary response containing its score, trend, and associated KPIs.
-7. Change the home screen from individual KPI cards to one progress ring per life domain. Put individual KPI/habit management and history on the domain's separate page.
+7. Change the home screen from individual KPI cards to one progress ring per life domain. The first UI slice is implemented: monthly numeric/check-in summaries appear on the overview, and selecting a domain opens its KPI view with recent check-in history.
 8. Make the current frontend mobile-first and PWA-installable, including manifest, service worker, and appropriate mobile navigation and offline/error states.
-9. Add yes/no habit check-ins as timestamped records so answers can support history and progress calculations. Add push subscriptions and reminders after the core PWA and authenticated user flows are in place.
+9. Add scheduled yes/no check-ins as dated records and include them in progress calculations. The first daily, weekday, and biweekly schedules plus manual answers are implemented. Add push subscriptions and reminders after the core PWA and authenticated user flows are in place.
 10. Expand backend and frontend tests for domain assignment, score aggregation, trends, check-in history, user-data isolation, and the new mobile flows; pilot with sample data before relying on migrated real data.
 
 The existing PostgreSQL setup, FastAPI service, SQLAlchemy models, KPI CRUD, facts, and goals are intended to be retained and evolved rather than replaced. The current shared demo account must be replaced with authenticated, user-isolated access before storing real personal data. Push notifications also require a secure deployed origin.
@@ -56,6 +72,7 @@ The existing PostgreSQL setup, FastAPI service, SQLAlchemy models, KPI CRUD, fac
 - `backend/tests/`, `backend/TESTING.md`: Backend regression tests and test instructions.
 - `backend/requirements-dev.txt`: Development-only test dependencies.
 - `backend/create_schema.py`: Initializes a new schema or applies pending migrations.
+- `backend/seed_demo_checkins.py`: Explicitly seeds the shared demo account with five weeks of sample check-in data.
 - `backend/validate_db.py`: Checks database configuration and connectivity.
 - `scripts/Stop-Backend.ps1`: Stops the local Uvicorn backend process.
 
@@ -98,9 +115,21 @@ The API runs at `http://127.0.0.1:8000`. Check `http://127.0.0.1:8000/health` fo
 
 ### Frontend
 
-Open `dashboard-mvp.html` in a browser. By default, it uses the in-memory mock API; mock data is not persisted across page reloads.
+With the backend running, serve the frontend from the project root so browser requests are sent from an allowed local web origin:
 
-To use the FastAPI backend instead, configure `API_BASE` in `js/api.js` to point to the running API. The frontend/backend integration should be verified before relying on it.
+```powershell
+python -m http.server 5500 --bind 127.0.0.1
+```
+
+Open `http://127.0.0.1:5500/dashboard-mvp.html`. `js/api.js` is configured for the local FastAPI backend at `http://127.0.0.1:8000`; clear `API_BASE` to use the in-memory mock instead.
+
+To load the requested five-week examples into the shared demo account, apply the schema migration first, then run this explicitly from `backend`:
+
+```powershell
+python seed_demo_checkins.py
+```
+
+The script adds Steps (target 8,000) and Glasses of water (target 8), with daily Yes/No answers. Re-running it fills in missing sample dates without replacing existing answers. These are demo records in the shared account, not private user data.
 
 ## Testing
 
@@ -124,16 +153,17 @@ The VS Code task **Run Backend Tests** runs the suite with the project's virtual
 | `GET` | `/api/domains/{domain_id}/summary` | Return the domain's last-completed-month score, MoM/YoY changes, and KPIs. |
 | `GET` | `/api/kpis` | List KPIs for the demo user. |
 | `POST` | `/api/kpis` | Create a KPI. |
-| `PUT` | `/api/kpis/{kpi_id}` | Update a KPI's name, target, domain, direction, or unit. |
+| `PUT` | `/api/kpis/{kpi_id}` | Update KPI details or its check-in schedule. |
+| `POST` | `/api/kpis/{kpi_id}/checkins` | Record or correct a scheduled Yes/No answer for a date. |
 | `DELETE` | `/api/kpis/{kpi_id}` | Delete a KPI. |
 
-A KPI response contains `id`, `metric_type`, `name`, `domain_id`, `domain_name`, `direction`, `value`, `has_value`, `target`, and `unit`. `has_value` distinguishes an actual zero reading from a KPI with no recorded value yet. The create request requires `name`, `target`, and `domain_id`; `direction` defaults to `at_least` and may be `at_most`. `unit`, `value`, and `metric_type` are optional.
+A numeric KPI response contains `id`, `metric_type`, `name`, `domain_id`, `domain_name`, `direction`, `value`, `has_value`, `target`, and `unit`. `has_value` distinguishes an actual zero reading from a KPI with no recorded value yet. For a check-in KPI, create with `tracking_mode: "checkin"`, a cadence (`daily`, `weekdays`, or `biweekly`), and a `schedule_start_date`; biweekly KPIs also require selected weekdays numbered Monday=0 through Sunday=6. Existing KPIs default to numeric tracking.
 
-The domain summary selects the latest fact for each KPI within each completed UTC calendar month. It averages scored KPIs equally, excludes KPIs with no fact in that month, and reports the score change in percentage points. Numeric progress is capped at 100%; a zero value for an `at_most` KPI scores 100%. The summary currently covers numeric KPIs only; habit check-ins are not implemented yet.
+The domain summary selects the latest numeric fact for each KPI within each completed UTC calendar month. A check-in KPI is scored as Yes answers divided by scheduled dates in that calendar month; past unanswered scheduled dates count as No. The domain averages available KPI scores equally and reports MoM/YoY score differences in percentage points. Numeric progress is capped at 100%; a zero value for an `at_most` KPI scores 100%.
 
 ## Data Model
 
-The database models cover users, life domains, metric definitions, recorded facts, goals, dashboard layouts, external connections, and sync runs. Each goal/KPI references one life domain and stores its progress direction. The current KPI routes use a demo user; authentication and external data synchronization are not implemented as user-facing flows yet.
+The database models cover users, life domains, metric definitions, recorded facts, scheduled goals, check-in answers, dashboard layouts, external connections, and sync runs. Each goal/KPI references one life domain and stores either numeric tracking or its check-in schedule. The current KPI routes use a demo user; authentication and external data synchronization are not implemented as user-facing flows yet.
 
 ## Known Limitations
 

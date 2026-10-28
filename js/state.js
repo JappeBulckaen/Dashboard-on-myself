@@ -2,4 +2,6 @@
 // render.js reads this state, while modal.js saves changes through api.js and reloads it.
 let kpis = [];
 let domains = [];
+let domainSummaries = [];
+let selectedDomainId = null;
 let editingId = null;
